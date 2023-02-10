@@ -75,15 +75,27 @@ var motorTempsQuery = `from(bucket: "${bucket}")
   |> filter(fn: (r) => r["_measurement"] == "Motor Temps")
   |> last()`
 
+var toolDataQuery = `from(bucket: "${bucket}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r["_measurement"] == "Tool Data")
+  |> last()`
+
 var dailyPartCountQuery = `from(bucket: "${bucket}") 
   |> range(start: today())
   |> filter(fn: (r) => r["_measurement"] == "Gen Info")
   |> filter(fn: (r) => r["_field"] == "Parts Counter")`
 
-var dailyProductivityQuery = `from(bucket: "${bucket}") 
+var dailyRunTimeQuery = `from(bucket: "${bucket}") 
   |> range(start: today())
   |> filter(fn: (r) => r["_measurement"] == "Gen Info")
   |> filter(fn: (r) => r["_field"] == "Run Time")`
+
+var dailyAvailableTime = `from(bucket: "${bucket}") 
+  |> range(start: today())
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> filter(fn: (r) => r["_field"] == "Machine Hours")`
+
+
 
 app.get('/', (req, res) => {
     res.send('Please direct your query to a subdirectory')
@@ -225,6 +237,24 @@ app.get('/motor-temps', (req, res) => {
     })
 })
 
+app.get('/tool-data', (req, res) => {
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(toolDataQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject);
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            res.send(retArr)
+        }
+    })
+})
+
+
 app.get('/daily/parts-count', (req, res) => {
     let tableObject;
     let retArr = [];
@@ -246,10 +276,13 @@ app.get('/daily/parts-count', (req, res) => {
     })
 })
 
-app.get('/daily/productivity', (req, res) => {
+app.get('/daily/run-time', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(dailyProductivityQuery, {
+    let totalRunTimeMinutes;
+
+
+    queryClient.queryRows(dailyRunTimeQuery, {
         next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
@@ -258,33 +291,38 @@ app.get('/daily/productivity', (req, res) => {
             console.log(error)
         },
         complete: () => {
+
             let firstObject = retArr[0];
             let lastObject = retArr[retArr.length - 1];
-            let minutes = lastObject._value - firstObject._value;
-            let initalTime = firstObject._time.substring((firstObject._time.search('T')+1),(firstObject._time.length-1))
-            let lastRecordedTime = lastObject._time.substring((lastObject._time.search('T')+1),(lastObject._time.length-1))
-            let toSend = {fulldata: retArr, minutes : minutes, firstTime: initalTime, lastTime: lastRecordedTime}; 
-            res.send(toSend)
+            totalRunTimeMinutes = lastObject._value - firstObject._value; 
+            res.send({value:totalRunTimeMinutes})          
         }
     })
 })
 
+app.get('/daily/available-time', (req, res) => {
+    let tableObject;
+    let retArr = [];
+    let totalAvailableTime;
 
 
+    queryClient.queryRows(dailyAvailableTime, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject);
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
 
-//productivity will be something like on time / operational time? 
-
-
-//so I need to request the first "Op Time" and the last "Op Time"
-
-//then that will need to be figured up how much "in op time"
-
-
-
-
-
-
-
+            let firstObject = retArr[1];
+            let lastObject = retArr[retArr.length - 1];
+            totalAvailableTime = lastObject._value - firstObject._value; 
+            res.send({value:totalAvailableTime})          
+        }
+    })
+})
 
 app.listen(port, () => {
     console.log(`Listening on port ${port}`)
