@@ -1,14 +1,33 @@
 import { InfluxDB } from '@influxdata/influxdb-client'
 import express from 'express'
 const app = express()
+app.use(function (req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+});
 const port = 3001
 
+
+
+
+//cloud bucket
+// const token = "sQEPdlxGFA2rCGpNn1Qn_NdyJOXTrCPyw5VpEeuIvtSq5fAhrbalt5PN770taaGItwXh4kulerPoAt8VwJtK6g=="
+// const bucket = "sarvesh_test"
+// const org = "Onsrud"
+// const url = "http://18.118.218.115:8086/"
+
+//local DB on MVR30 brick info
 const token = "NJeGVVvav8f2dp4q4Gxn00mE02KZvD0-R3WAIeRLQ1yxPJgkrb8PxMmRorAArft4WFWeN8DYD39KMIs5K1Qgxg=="
 const bucket = "145G-TEST"
 const org = "CRO"
 const url = "http://192.168.1.234:8086/"
 
-const client = new InfluxDB({url,token})
+
+
+
+
+const client = new InfluxDB({ url, token })
 const queryClient = client.getQueryApi(org)
 
 var genInfoQuery = `from(bucket: "${bucket}")
@@ -56,16 +75,25 @@ var motorTempsQuery = `from(bucket: "${bucket}")
   |> filter(fn: (r) => r["_measurement"] == "Motor Temps")
   |> last()`
 
+var dailyPartCountQuery = `from(bucket: "${bucket}") 
+  |> range(start: today())
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> filter(fn: (r) => r["_field"] == "Parts Counter")`
 
-app.get('/',  (req, res) => {
+var dailyProductivityQuery = `from(bucket: "${bucket}") 
+  |> range(start: today())
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> filter(fn: (r) => r["_field"] == "Run Time")`
+
+app.get('/', (req, res) => {
     res.send('Please direct your query to a subdirectory')
 })
 
-app.get('/gen-info', (req,res) =>{
+app.get('/gen-info', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(genInfoQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(genInfoQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -78,11 +106,11 @@ app.get('/gen-info', (req,res) =>{
     })
 })
 
-app.get('/absolute-positions', (req,res) =>{
+app.get('/absolute-positions', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(postionInfoQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(postionInfoQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -95,12 +123,11 @@ app.get('/absolute-positions', (req,res) =>{
     })
 })
 
-
-app.get('/active-codes/', (req,res) =>{
+app.get('/active-codes/', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(activeCodesQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(activeCodesQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -113,11 +140,11 @@ app.get('/active-codes/', (req,res) =>{
     })
 })
 
-app.get('/alarms-and-messages', (req,res) =>{
+app.get('/alarms-and-messages', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(alarmsAndMessagesQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(alarmsAndMessagesQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -130,11 +157,11 @@ app.get('/alarms-and-messages', (req,res) =>{
     })
 })
 
-app.get('/axis-loads', (req,res) =>{
+app.get('/axis-loads', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(axisLoadsQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(axisLoadsQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -147,11 +174,11 @@ app.get('/axis-loads', (req,res) =>{
     })
 })
 
-app.get('/axis-voltages', (req,res) =>{
+app.get('/axis-voltages', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(axisVoltagesQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(axisVoltagesQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -164,11 +191,11 @@ app.get('/axis-voltages', (req,res) =>{
     })
 })
 
-app.get('/encoder-temps', (req,res) =>{
+app.get('/encoder-temps', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(encoderTempsQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(encoderTempsQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -181,11 +208,11 @@ app.get('/encoder-temps', (req,res) =>{
     })
 })
 
-app.get('/motor-temps', (req,res) =>{
+app.get('/motor-temps', (req, res) => {
     let tableObject;
     let retArr = [];
-    queryClient.queryRows(motorTempsQuery,{
-        next: (row,tableMeta) => {
+    queryClient.queryRows(motorTempsQuery, {
+        next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
             retArr.push(tableObject);
         },
@@ -198,16 +225,59 @@ app.get('/motor-temps', (req,res) =>{
     })
 })
 
+app.get('/daily/parts-count', (req, res) => {
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(dailyPartCountQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject);
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            let firstObject = retArr[0];
+            let lastObject = retArr[retArr.length - 1];
+            let count = lastObject._value - firstObject._value;
+            let toSend = { value: count }
+            res.send(toSend)
+        }
+    })
+})
+
+app.get('/daily/productivity', (req, res) => {
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(dailyProductivityQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject);
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            let firstObject = retArr[0];
+            let lastObject = retArr[retArr.length - 1];
+            let minutes = lastObject._value - firstObject._value;
+            let initalTime = firstObject._time.substring((firstObject._time.search('T')+1),(firstObject._time.length-1))
+            let lastRecordedTime = lastObject._time.substring((lastObject._time.search('T')+1),(lastObject._time.length-1))
+            let toSend = {fulldata: retArr, minutes : minutes, firstTime: initalTime, lastTime: lastRecordedTime}; 
+            res.send(toSend)
+        }
+    })
+})
 
 
 
 
+//productivity will be something like on time / operational time? 
 
 
+//so I need to request the first "Op Time" and the last "Op Time"
 
-
-
-
+//then that will need to be figured up how much "in op time"
 
 
 
