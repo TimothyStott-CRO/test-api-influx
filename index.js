@@ -96,6 +96,11 @@ var dailyAvailableTime = `from(bucket: "${bucket}")
   |> filter(fn: (r) => r["_field"] == "Machine Hours")`
 
 
+var dailyProgramsQuery = `from(bucket: "${bucket}") 
+  |> range(start: today())
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> filter(fn: (r) => r["_field"] == "Program Name")`
+
 
 app.get('/', (req, res) => {
     res.send('Please direct your query to a subdirectory')
@@ -254,7 +259,6 @@ app.get('/tool-data', (req, res) => {
     })
 })
 
-
 app.get('/daily/parts-count', (req, res) => {
     let tableObject;
     let retArr = [];
@@ -323,6 +327,27 @@ app.get('/daily/available-time', (req, res) => {
         }
     })
 })
+
+app.get('/daily/programs', (req, res) => {
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(dailyProgramsQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject);
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+        res.send(retArr)
+        }
+    })
+})
+
+
+
+
 
 app.listen(port, () => {
     console.log(`Listening on port ${port}`)
