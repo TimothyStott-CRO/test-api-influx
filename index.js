@@ -85,6 +85,13 @@ var dailyPartCountQuery = `from(bucket: "${bucket}")
   |> filter(fn: (r) => r["_measurement"] == "Gen Info")
   |> filter(fn: (r) => r["_field"] == "Parts Counter")`
 
+
+var dailyProductivity = `from(bucket: "${bucket}") 
+  |> range(start: today())
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> filter(fn: (r) => r["_field"] == "Run Time" or r["_field"] == "Machine Hours")`
+
+
 var dailyRunTimeQuery = `from(bucket: "${bucket}") 
   |> range(start: today())
   |> filter(fn: (r) => r["_measurement"] == "Gen Info")
@@ -102,6 +109,11 @@ var dailyProgramsQuery = `from(bucket: "${bucket}")
   |> filter(fn: (r) => r["_field"] == "Program Name")`
 
 
+var programHistoryQuery = `from(bucket: "${bucket}") 
+  |> range(start: today())
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> filter(fn: (r) => r["_field"] == "Cycle Time" or r["_field"] == "Parts Counter" or r["_field"] == "Program Name" or r["_field"] == "Status" or r["_field"] == "Machine Hours")`
+
 app.get('/', (req, res) => {
     res.send('Please direct your query to a subdirectory')
 })
@@ -118,6 +130,7 @@ app.get('/gen-info', (req, res) => {
             console.log(error)
         },
         complete: () => {
+            retArr.push({_field:"Serial Number",_value:bucket})
             res.send(retArr)
         }
     })
@@ -271,7 +284,7 @@ app.get('/daily/parts-count', (req, res) => {
             console.log(error)
         },
         complete: () => {
-            let firstObject = retArr[0];
+            let firstObject = retArr[1];
             let lastObject = retArr[retArr.length - 1];
             let count = lastObject._value - firstObject._value;
             let toSend = { value: count }
@@ -279,6 +292,42 @@ app.get('/daily/parts-count', (req, res) => {
         }
     })
 })
+
+app.get('/daily/productivity', (req, res) => {
+    let tableObject;
+    let productivity;
+    let toReturn = { onTime: 0, runTime: 0, value: productivity }
+    let runTimeArr = []
+    let onTimeArr = []
+    queryClient.queryRows(dailyProductivity, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            switch (tableObject._field) {
+                case "Machine Hours":
+                    onTimeArr.push(tableObject)
+                    break;
+                case "Run Time":
+                    runTimeArr.push(tableObject)
+                    break;
+                default:
+                    break;
+            }
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+
+            toReturn.onTime = (onTimeArr[onTimeArr.length - 1]._value - onTimeArr[1]._value)
+            toReturn.runTime = (runTimeArr[runTimeArr.length - 1]._value - runTimeArr[0]._value)
+            toReturn.value = Math.round(toReturn.runTime / toReturn.onTime * 10000) / 100
+            res.send(toReturn)
+
+        }
+    })
+})
+
+
 
 app.get('/daily/run-time', (req, res) => {
     let tableObject;
@@ -298,8 +347,8 @@ app.get('/daily/run-time', (req, res) => {
 
             let firstObject = retArr[0];
             let lastObject = retArr[retArr.length - 1];
-            totalRunTimeMinutes = lastObject._value - firstObject._value; 
-            res.send({value:totalRunTimeMinutes})          
+            totalRunTimeMinutes = lastObject._value - firstObject._value;
+            res.send({ value: totalRunTimeMinutes })
         }
     })
 })
@@ -322,8 +371,8 @@ app.get('/daily/available-time', (req, res) => {
 
             let firstObject = retArr[1];
             let lastObject = retArr[retArr.length - 1];
-            totalAvailableTime = lastObject._value - firstObject._value; 
-            res.send({value:totalAvailableTime})          
+            totalAvailableTime = lastObject._value - firstObject._value;
+            res.send({ value: totalAvailableTime })
         }
     })
 })
@@ -340,10 +389,79 @@ app.get('/daily/programs', (req, res) => {
             console.log(error)
         },
         complete: () => {
-        res.send(retArr)
+            res.send(retArr)
         }
     })
 })
+
+
+app.get('/daily/program-history', (req, res) => {
+    let tableObject;
+    let cycleTimeArr = [];
+    let statusArr = [];
+    let programNameArr = [];
+    let partsCounterArr = [];
+    let machineHoursArr = [];
+
+    queryClient.queryRows(programHistoryQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            switch (tableObject._field) {
+                case 'Cycle Time':
+                    cycleTimeArr.push(tableObject);
+                    break;
+                case 'Parts Counter':
+                    partsCounterArr.push(tableObject);
+                    break;
+                case 'Program Name':
+                    programNameArr.push(tableObject);
+                    break;
+                case 'Status':
+                    statusArr.push(tableObject);
+                    break;
+                case 'Machine Hours':
+                    machineHoursArr.push(tableObject);
+                    break;
+                default:
+                    break;
+            }
+
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            let startTimeArray = [];
+            let endTimeArray = [];
+            let actualCycleTimesArr = [];
+            let idleTimeArr = [];
+
+
+            //get all cycle time changes including last one and their timestamps
+            for (let i = 0; i < cycleTimeArr.length; i++) {
+                if (i !== 0) {
+                    if (cycleTimeArr[i]._value < cycleTimeArr[i - 1]._value) {
+                        actualCycleTimesArr.push(cycleTimeArr[i - 1]._value)
+                        endTimeArray.push(cycleTimeArr[i - 1]._time)
+                    }
+                    //adds current program to history. This may not be necessary but I think it should be here to give them an acurrate idle time.
+                    //however this doesn't always work as is since there is no way to know if a program is actually running. 
+                    if (i === cycleTimeArr.length - 1 && cycleTimeArr[i].value > cycleTimeArr[i - 1]._value) {
+                        actualCycleTimesArr.push(cycleTimeArr[i]._value)
+                        endTimeArray.push(cycleTimeArr[i - 1]._time)
+                    }
+                }
+            }
+
+
+
+
+
+            res.send([actualCycleTimesArr, endTimeArray, startTimeArray, idleTimeArr, machineHoursArr, programNameArr])
+        }
+    })
+})
+
 
 
 
