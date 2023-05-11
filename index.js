@@ -8,20 +8,19 @@ app.use(function (req, res, next) {
 });
 const port = 3001
 
-
-
-
 //cloud bucket
-// const token = "sQEPdlxGFA2rCGpNn1Qn_NdyJOXTrCPyw5VpEeuIvtSq5fAhrbalt5PN770taaGItwXh4kulerPoAt8VwJtK6g=="
-// const bucket = "sarvesh_test"
-// const org = "Onsrud"
-// const url = "http://18.118.218.115:8086/"
+const token = "_Vjg-EobTLO-PRE2_7oed8kI9tL3mA6gTMMClcq2Gu0J5orMD_ilTZ0oTtJVNS4fStULh3nYB0BEsNb6gDej2Q==";
+const org = "Onsrud";
+const url = "http://3.15.33.121:8086";
 
-//local DB on MVR30 brick info
-const token = "NJeGVVvav8f2dp4q4Gxn00mE02KZvD0-R3WAIeRLQ1yxPJgkrb8PxMmRorAArft4WFWeN8DYD39KMIs5K1Qgxg=="
-const bucket = "145G-TEST"
-const org = "CRO"
-const url = "http://192.168.1.234:8086/"
+// const org = "CRO";
+// const token = "Ghooo4rBGx61mJpO3wFUduX1jg84TI5wGS6uyjsSEIfMwlTM27KrcgBBXjrXFXEjAwXNyol0LifOeZ5-Bl-_9Q==";
+
+
+// //local DB
+//  const token = "Sgbk6sKLgqN1g-R2a_RiFWFDr8APhnoVkIegzJ-GYPW6jjwCeq5BP4S96QLIGFsvMuazQ9UmjvafWoz96uEaQw=="
+//  const org = "Onsrud"
+//  const url = "http://192.168.2.2:8086/"
 
 
 
@@ -30,95 +29,43 @@ const url = "http://192.168.1.234:8086/"
 const client = new InfluxDB({ url, token })
 const queryClient = client.getQueryApi(org)
 
-var genInfoQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> last()`
+var query = `buckets()
+|> keep(columns: ["name"])`
 
-var postionInfoQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Absolute Postion Info")
-  |> last()`
-
-var activeCodesQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Active Codes")
-  |> last()`
-
-
-var alarmsAndMessagesQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Alarms and Messages")
-  |> last()`
-
-
-var axisLoadsQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Axis Loads")
-  |> last()`
-
-
-var axisVoltagesQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Axis Voltages")
-  |> last()`
-
-
-var encoderTempsQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Encoder Temps")
-  |> last()`
-
-
-var motorTempsQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Motor Temps")
-  |> last()`
-
-var toolDataQuery = `from(bucket: "${bucket}")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r["_measurement"] == "Tool Data")
-  |> last()`
-
-var dailyPartCountQuery = `from(bucket: "${bucket}") 
-  |> range(start: today())
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> filter(fn: (r) => r["_field"] == "Parts Counter")`
-
-
-var dailyProductivity = `from(bucket: "${bucket}") 
-  |> range(start: today())
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> filter(fn: (r) => r["_field"] == "Run Time" or r["_field"] == "Machine Hours")`
-
-
-var dailyRunTimeQuery = `from(bucket: "${bucket}") 
-  |> range(start: today())
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> filter(fn: (r) => r["_field"] == "Run Time")`
-
-var dailyAvailableTime = `from(bucket: "${bucket}") 
-  |> range(start: today())
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> filter(fn: (r) => r["_field"] == "Machine Hours")`
-
-
-var dailyProgramsQuery = `from(bucket: "${bucket}") 
-  |> range(start: today())
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> filter(fn: (r) => r["_field"] == "Program Name")`
-
-
-var programHistoryQuery = `from(bucket: "${bucket}") 
-  |> range(start: today())
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> filter(fn: (r) => r["_field"] == "Cycle Time" or r["_field"] == "Parts Counter" or r["_field"] == "Program Name" or r["_field"] == "Status" or r["_field"] == "Machine Hours")`
 
 app.get('/', (req, res) => {
     res.send('Please direct your query to a subdirectory')
 })
 
-app.get('/gen-info', (req, res) => {
+app.get('/buckets', (req, res) => {
+    var resArr = [];
+    var retArry = [];
+    queryClient.queryRaw(query)
+        .then(result => {
+            resArr = result.split('\n');
+
+        })
+        .catch(error => {
+            console.error('Error listing buckets:', error);
+        })
+        .then(() => {
+            retArry = resArr.slice(4, resArr.length - 4)
+            retArry = retArry.map((item) => {
+                return item.slice(4, item.length - 1)
+            })
+            res.send(retArry)
+        })
+})
+
+app.get('/gen-info/:bucket', (req, res) => {
+    let bucket = req.params['bucket'];
+
+    var genInfoQuery = `from(bucket: "${bucket}")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+  |> last()`
+
+
     let tableObject;
     let retArr = [];
     queryClient.queryRows(genInfoQuery, {
@@ -130,13 +77,21 @@ app.get('/gen-info', (req, res) => {
             console.log(error)
         },
         complete: () => {
-            retArr.push({_field:"Serial Number",_value:bucket})
+            retArr.push({ _field: "Serial Number", _value: bucket })
             res.send(retArr)
         }
     })
 })
 
-app.get('/absolute-positions', (req, res) => {
+app.get('/absolute-positions/:bucket', (req, res) => {
+    let bucket = req.params['bucket'];
+
+    var postionInfoQuery = `from(bucket: "${bucket}")
+    |> range(start: -24h)
+    |> filter(fn: (r) => r["_measurement"] == "Absolute Postion Info")
+    |> last()`
+
+
     let tableObject;
     let retArr = [];
     queryClient.queryRows(postionInfoQuery, {
@@ -153,317 +108,222 @@ app.get('/absolute-positions', (req, res) => {
     })
 })
 
-app.get('/active-codes/', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(activeCodesQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
+app.get('/all-alarms-and-messages/:bucket/:range?', (req, res) => {
+    let bucket = req.params['bucket'];
+    let range = req.params['range'];
+    if (range == undefined) {
+        range = "-7d"
+    }
+    var dailyAlarmQuery = `from(bucket: "${bucket}")
+    |> range(start: ${range})
+    |> filter(fn: (r) => r["_measurement"] == "Alarms and Messages")`
 
-app.get('/alarms-and-messages', (req, res) => {
     let tableObject;
-    let retArr = [];
-    queryClient.queryRows(alarmsAndMessagesQuery, {
+    let messArr = [];
+    let alarmArr = [];
+    queryClient.queryRows(dailyAlarmQuery, {
         next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/axis-loads', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(axisLoadsQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/axis-voltages', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(axisVoltagesQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/encoder-temps', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(encoderTempsQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/motor-temps', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(motorTempsQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/tool-data', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(toolDataQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/daily/parts-count', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(dailyPartCountQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            let firstObject = retArr[1];
-            let lastObject = retArr[retArr.length - 1];
-            let count = lastObject._value - firstObject._value;
-            let toSend = { value: count }
-            res.send(toSend)
-        }
-    })
-})
-
-app.get('/daily/productivity', (req, res) => {
-    let tableObject;
-    let productivity;
-    let toReturn = { onTime: 0, runTime: 0, value: productivity }
-    let runTimeArr = []
-    let onTimeArr = []
-    queryClient.queryRows(dailyProductivity, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            switch (tableObject._field) {
-                case "Machine Hours":
-                    onTimeArr.push(tableObject)
-                    break;
-                case "Run Time":
-                    runTimeArr.push(tableObject)
-                    break;
-                default:
-                    break;
+            if (tableObject._field == "Message") {
+                messArr.push(tableObject)
+            }
+            else if (tableObject._field == "Alarm") {
+                alarmArr.push(tableObject)
             }
         },
         error: (error) => {
             console.log(error)
         },
         complete: () => {
-
-            toReturn.onTime = (onTimeArr[onTimeArr.length - 1]._value - onTimeArr[1]._value)
-            toReturn.runTime = (runTimeArr[runTimeArr.length - 1]._value - runTimeArr[0]._value)
-            toReturn.value = Math.round(toReturn.runTime / toReturn.onTime * 10000) / 100
-            res.send(toReturn)
-
+            res.send({ messages: messArr, alarms: alarmArr })
         }
     })
 })
 
+app.get('/mode-and-status-info/:bucket/:range?', (req, res) => {
+    let bucket = req.params['bucket'];
+    let range = req.params['range'];
+    if (range == undefined) {
+        range = "-7d"
+    }
+    var dailyAlarmQuery = `from(bucket: "${bucket}")
+    |> range(start: ${range})
+    |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+    |> filter(fn: (r) => r["_field"] == "Mode" or r["_field"] == "Status")`
 
-
-app.get('/daily/run-time', (req, res) => {
     let tableObject;
-    let retArr = [];
-    let totalRunTimeMinutes;
-
-
-    queryClient.queryRows(dailyRunTimeQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-
-            let firstObject = retArr[0];
-            let lastObject = retArr[retArr.length - 1];
-            totalRunTimeMinutes = lastObject._value - firstObject._value;
-            res.send({ value: totalRunTimeMinutes })
-        }
-    })
-})
-
-app.get('/daily/available-time', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    let totalAvailableTime;
-
-
-    queryClient.queryRows(dailyAvailableTime, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-
-            let firstObject = retArr[1];
-            let lastObject = retArr[retArr.length - 1];
-            totalAvailableTime = lastObject._value - firstObject._value;
-            res.send({ value: totalAvailableTime })
-        }
-    })
-})
-
-app.get('/daily/programs', (req, res) => {
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(dailyProgramsQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-
-app.get('/daily/program-history', (req, res) => {
-    let tableObject;
-    let cycleTimeArr = [];
+    let modeArr = [];
     let statusArr = [];
-    let programNameArr = [];
-    let partsCounterArr = [];
-    let machineHoursArr = [];
-
-    queryClient.queryRows(programHistoryQuery, {
+    queryClient.queryRows(dailyAlarmQuery, {
         next: (row, tableMeta) => {
             tableObject = tableMeta.toObject(row)
-            switch (tableObject._field) {
-                case 'Cycle Time':
-                    cycleTimeArr.push(tableObject);
-                    break;
-                case 'Parts Counter':
-                    partsCounterArr.push(tableObject);
-                    break;
-                case 'Program Name':
-                    programNameArr.push(tableObject);
-                    break;
-                case 'Status':
-                    statusArr.push(tableObject);
-                    break;
-                case 'Machine Hours':
-                    machineHoursArr.push(tableObject);
-                    break;
-                default:
-                    break;
+            if (tableObject._field == "Mode") {
+                modeArr.push(tableObject)
             }
+            else if (tableObject._field == "Status") {
+                statusArr.push(tableObject)
+            }
+        }
+        ,
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            res.send({ mode: modeArr, status: statusArr })
+        }
 
+    })
+})
+
+app.get('/historical-loads-and-temps/:bucket/:range?/', (req, res) => {
+    let bucket = req.params['bucket'];
+    let range = req.params['range'];
+    if (range == undefined) {
+        range = "-24h"
+    }
+    var dailyAlarmQuery = `from(bucket: "${bucket}")
+    |> range(start: ${range})
+    |> filter(fn: (r) => r["_measurement"] == "Axis Loads" or r["_measurement"] == "Axis Voltages" or r["_measurement"] == "Encoder Temps" or r["_measurement"] == "Motor Temps")`
+
+    let tableObject;
+    let loadArr = [];
+    let voltArr = [];
+    let encTempArr = [];
+    let motTempArr = [];
+    queryClient.queryRows(dailyAlarmQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            if (tableObject._measurement == "Axis Loads") {
+                loadArr.push(tableObject)
+            }
+            else if (tableObject._measurement == "Axis Voltages") {
+                voltArr.push(tableObject)
+            }
+            else if (tableObject._measurement == "Encoder Temps") {
+                encTempArr.push(tableObject)
+            }
+            else if (tableObject._measurement == "Motor Temps") {
+                motTempArr.push(tableObject)
+            }
+        }
+        ,
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            res.send({ loads: loadArr, voltages: voltArr, encoderTemps: encTempArr, motorTemps: motTempArr })
+        }
+    })
+})
+
+app.get('/alarms-details/:bucket/:time/', (req, res) => {
+    let bucket = req.params['bucket'];
+    var startTime = (new Date((Date.parse(req.params['time'])) - (15 * 60 * 1000))).toISOString();
+    var endTime = (new Date((Date.parse(req.params['time'])) + (15 * 60 * 1000))).toISOString();
+
+
+    var dailyAlarmQuery = `from(bucket: "${bucket}")
+    |> range(start: ${startTime}, stop: ${endTime})
+    |> filter(fn: (r) => r["_measurement"] == "Alarms and Messages")`
+
+
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(dailyAlarmQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject)
         },
         error: (error) => {
             console.log(error)
         },
         complete: () => {
-            let startTimeArray = [];
-            let endTimeArray = [];
-            let actualCycleTimesArr = [];
-            let idleTimeArr = [];
-
-
-            //get all cycle time changes including last one and their timestamps
-            for (let i = 0; i < cycleTimeArr.length; i++) {
-                if (i !== 0) {
-                    if (cycleTimeArr[i]._value < cycleTimeArr[i - 1]._value) {
-                        actualCycleTimesArr.push(cycleTimeArr[i - 1]._value)
-                        endTimeArray.push(cycleTimeArr[i - 1]._time)
-                    }
-                    //adds current program to history. This may not be necessary but I think it should be here to give them an acurrate idle time.
-                    //however this doesn't always work as is since there is no way to know if a program is actually running. 
-                    if (i === cycleTimeArr.length - 1 && cycleTimeArr[i].value > cycleTimeArr[i - 1]._value) {
-                        actualCycleTimesArr.push(cycleTimeArr[i]._value)
-                        endTimeArray.push(cycleTimeArr[i - 1]._time)
-                    }
-                }
-            }
-
-
-
-
-
-            res.send([actualCycleTimesArr, endTimeArray, startTimeArray, idleTimeArr, machineHoursArr, programNameArr])
+            res.send(retArr)
         }
     })
 })
 
+app.get('/alarms-details-sm/:bucket/:time/', (req, res) => {
+    let bucket = req.params['bucket'];
+    var startTime = (new Date((Date.parse(req.params['time'])) - (15 * 60 * 1000))).toISOString();
+    var endTime = (new Date((Date.parse(req.params['time'])) + (15 * 60 * 1000))).toISOString();
 
 
+    var smQuery = `from(bucket: "${bucket}")
+    |> range(start: ${startTime}, stop: ${endTime})
+    |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+    |> filter(fn: (r) => r["_field"] == "Mode" or r["_field"] == "Status")`
+
+
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(smQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject)
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            res.send(retArr)
+        }
+    })
+})
+
+app.get('/alarms-details-lt/:bucket/:time/', (req, res) => {
+    let bucket = req.params['bucket'];
+    var startTime = (new Date((Date.parse(req.params['time'])) - (15 * 60 * 1000))).toISOString();
+    var endTime = (new Date((Date.parse(req.params['time'])) + (15 * 60 * 1000))).toISOString();
+
+
+    var smQuery = `from(bucket: "${bucket}")
+    |> range(start: ${startTime}, stop: ${endTime})
+    |> filter(fn: (r) => r  ["_measurement"] == "Axis Loads" or r["_measurement"] == "Axis Voltages" or r["_measurement"] == "Encoder Temps" or r["_measurement"] == "Motor Temps")`
+
+
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(smQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject)
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            res.send(retArr)
+        }
+    })
+})
+
+app.get('/alarms-details-os/:bucket/:time/', (req, res) => {
+    let bucket = req.params['bucket'];
+    var startTime = (new Date((Date.parse(req.params['time'])) - (15 * 60 * 1000))).toISOString();
+    var endTime = (new Date((Date.parse(req.params['time'])) + (15 * 60 * 1000))).toISOString();
+
+
+    var smQuery = `from(bucket: "${bucket}")
+    |> range(start: ${startTime}, stop: ${endTime})
+    |> filter(fn: (r) => r["Alarm One Shot"] == "Post-Alarm" or r["Alarm One Shot"] == "Pre-Alarm")`
+
+
+    let tableObject;
+    let retArr = [];
+    queryClient.queryRows(smQuery, {
+        next: (row, tableMeta) => {
+            tableObject = tableMeta.toObject(row)
+            retArr.push(tableObject)
+        },
+        error: (error) => {
+            console.log(error)
+        },
+        complete: () => {
+            res.send(retArr)
+        }
+    })
+})
 
 
 
