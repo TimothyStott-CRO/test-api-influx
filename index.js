@@ -366,13 +366,17 @@ app.post('/email-info/', jsonParser, (req, res) => {
     const buckets = req.body.buckets;
     // const queryClient = new InfluxDB({ url, userToken }).getQueryApi(userOrg)
     const queryClient = createQueryClient(url, userToken, userOrg)
+    console.log(req.body) 
+    
+    
+    aggregateData(buckets)
 
     async function aggregateData(buckets) {
         const unstructuredMachineHours = [];
         const unstructuredRunTime = [];
         const unstructuredCycleTime = [];
         let structuredReturnData = [];
-
+        let unstructuredPartProduction = [];
         for (const bucket of buckets) {
             try {
                 const retMH = await getMachineHoursData(bucket)
@@ -381,37 +385,34 @@ app.post('/email-info/', jsonParser, (req, res) => {
                 unstructuredRunTime.push(retRT)
                 const retCT = await getCycleTimeData(bucket)
                 unstructuredCycleTime.push(retCT)
-                console.log(bucket)
-                console.log("Productivity: " + calculateProductivity(retRT, retMH))
-                console.log("Total M Time: " + calculateMachineHoursTotal(retMH))
-                console.log("Total Cycle Time: " + calculateTotalCycleTime(retCT))
-                console.log("Average Cycle Time: " + calculateAverageCycleTime(retCT))
+                const retPP = await getPartProductionData(bucket)
+                unstructuredPartProduction.push(retPP)
                 let productivity = calculateProductivity(retRT, retMH)
                 let totalOnTime = calculateMachineHoursTotal(retMH)
                 let totalCycleTime = calculateTotalCycleTime(retCT)
                 let averageCycleTime = calculateAverageCycleTime(retCT)
+                let partsProduced = calculatePartsProduced(retPP)
 
                 let emailData = {
                     bucket: bucket,
                     productivity: productivity,
                     totalOnTime: totalOnTime,
                     totalCycleTime: totalCycleTime,
-                    averageCycleTime: averageCycleTime
+                    averageCycleTime: averageCycleTime,
+                    partsProduced: partsProduced
                 }
                 structuredReturnData.push(emailData)
             }
             catch (err) {
                 console.log(err)
+                structuredReturnData.push({ bucket: bucket, error: err })
             }
 
         }
 
-
-
-
         res.send(structuredReturnData)
     }
-    aggregateData(buckets)
+
 
     async function getMachineHoursData(bucketToGet) {
         const machineHoursQuery = `from(bucket: "${bucketToGet}")
@@ -477,6 +478,29 @@ app.post('/email-info/', jsonParser, (req, res) => {
         }
         return retArr
     }
+    async function getPartProductionData(bucketToGet) {
+        const partProductionQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: today())
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Parts Counter")`;
+        const retArr = [];
+        const partProductionRetObj = await queryClient.collectRows(partProductionQuery)
+        for (let i = 0; i < partProductionRetObj.length; i++) {
+            const partProductionObj = {
+                bucket: bucketToGet,
+                _field: partProductionRetObj[i]._field,
+                _value: partProductionRetObj[i]._value,
+                _time: partProductionRetObj[i]._time,
+                _wasOneShot: partProductionRetObj[i]["Alarm One Shot"]
+            }
+            if (partProductionObj._wasOneShot === undefined) {
+                retArr.push(partProductionObj)
+            }
+        }   
+        return retArr
+    }
+
+
 
 
     function calculateTotalCycleTime(cycleTimesArray) {
@@ -563,7 +587,7 @@ app.post('/email-info/', jsonParser, (req, res) => {
         let runTimeTotal = runTimesArray[runTimesArray.length - 1]._value - runTimesArray[0]._value;
         let machineHoursTotal = machineHoursArray[machineHoursArray.length - 1]._value - machineHoursArray[0]._value;
         let productivityValue = runTimeTotal / machineHoursTotal;
-        return ((productivityValue.toFixed(2)) * 100);
+        return Math.round(((productivityValue.toFixed(2)) * 100));
     }
     function calculateMachineHoursTotal(machineHoursArray) {
         if (machineHoursArray.length === 0) {
@@ -581,6 +605,17 @@ app.post('/email-info/', jsonParser, (req, res) => {
             return hours + "h " + minutes + "m";
         }
     }
+    function calculatePartsProduced(partProductionArray) {
+        if (partProductionArray.length === 0) {
+            return 0
+        }
+        if (partProductionArray.length === 1) {
+            return 1
+        }
+        let partsProducedTotal = partProductionArray[partProductionArray.length - 1]._value - partProductionArray[0]._value;
+        return partsProducedTotal;
+    }
+
 })
 
 
