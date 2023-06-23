@@ -361,45 +361,74 @@ app.get('/alarms-details-progam-details/:bucket/:time/', (req, res) => {
 })
 
 app.post('/email-info/', jsonParser, (req, res) => {
+    const TWODAYSAGO = (new Date(Date.now() - 172800000).toISOString().split('T')[0]).toString();
+    const YESTERDAY = (new Date(Date.now() - 86400000).toISOString().split('T')[0]).toString();
+    const TODAY = (new Date().toISOString().split('T')[0]).toString();
     const userToken = req.body.token;
     const userOrg = req.body.org;
     const buckets = req.body.buckets;
-    // const queryClient = new InfluxDB({ url, userToken }).getQueryApi(userOrg)
     const queryClient = createQueryClient(url, userToken, userOrg)
-    console.log(req.body) 
-    
-    
+    console.log(req.body)
+
+
     aggregateData(buckets)
 
     async function aggregateData(buckets) {
-        const unstructuredMachineHours = [];
-        const unstructuredRunTime = [];
-        const unstructuredCycleTime = [];
+        const unstructuredMachineHoursYesterday = [];
+        const unstructuredMachineHoursTwoDaysAgo = [];
+
+        const unstructuredRunTimeYesterday = [];
+        const unstructuredRunTimeTwoDaysAgo = [];
+
+        const unstructuredCycleTimeYesterday = [];
+        const unstructuredCycleTimeTwoDaysAgo = [];
+
+        let unstructuredPartProductionYesterday = [];
+        let unstructuredPartProductionTwoDaysAgo = [];
         let structuredReturnData = [];
-        let unstructuredPartProduction = [];
         for (const bucket of buckets) {
             try {
-                const retMH = await getMachineHoursData(bucket)
-                unstructuredMachineHours.push(retMH)
-                const retRT = await getRunTimeData(bucket)
-                unstructuredRunTime.push(retRT)
-                const retCT = await getCycleTimeData(bucket)
-                unstructuredCycleTime.push(retCT)
-                const retPP = await getPartProductionData(bucket)
-                unstructuredPartProduction.push(retPP)
-                let productivity = calculateProductivity(retRT, retMH)
-                let totalOnTime = calculateMachineHoursTotal(retMH)
-                let totalCycleTime = calculateTotalCycleTime(retCT)
-                let averageCycleTime = calculateAverageCycleTime(retCT)
-                let partsProduced = calculatePartsProduced(retPP)
+                const yesterdaysRetMH = await getMachineHoursData(bucket,YESTERDAY,TODAY)
+                const twoDaysAgoRetMH = await getMachineHoursData(bucket,TWODAYSAGO,YESTERDAY)
+                unstructuredMachineHoursYesterday.push(yesterdaysRetMH)
+                unstructuredMachineHoursTwoDaysAgo.push(yesterdaysRetMH)
+
+
+                const retRT = await getRunTimeData(bucket,YESTERDAY,TODAY)
+                const twoDaysAgoRetRT = await getRunTimeData(bucket,TWODAYSAGO,YESTERDAY)                
+                unstructuredRunTimeYesterday.push(retRT)
+                unstructuredRunTimeTwoDaysAgo.push(twoDaysAgoRetRT)
+
+                const retCT = await getCycleTimeData(bucket,YESTERDAY,TODAY)
+                const twoDaysAgoRetCT = await getCycleTimeData(bucket,TWODAYSAGO,YESTERDAY)
+
+                const retPP = await getPartProductionData(bucket, YESTERDAY, TODAY)
+                const twoDaysAgoRetPP = await getPartProductionData(bucket, TWODAYSAGO, YESTERDAY)                
+                unstructuredPartProductionYesterday.push(retPP)
+                unstructuredPartProductionTwoDaysAgo.push(twoDaysAgoRetPP)
+
+                let productivityYesterday = calculateProductivity(retRT, yesterdaysRetMH)
+                let productivityTwoDaysAgo = calculateProductivity(twoDaysAgoRetRT, twoDaysAgoRetMH)
+
+                let totalOnTimeYesterday = calculateMachineHoursTotal(yesterdaysRetMH)
+                let totalOnTimeTwoDaysAgo = calculateMachineHoursTotal(twoDaysAgoRetMH)
+
+                let totalCycleTimeYesterday = calculateTotalCycleTime(retCT)
+                let totalCycleTimeTwoDaysAgo = calculateTotalCycleTime(twoDaysAgoRetCT)
+
+                let averageCycleTimeYesterday = calculateAverageCycleTime(retCT)
+                let averageCycleTimeTwoDaysAgo = calculateAverageCycleTime(twoDaysAgoRetCT)
+
+                let partsProducedYesterday = calculatePartsProduced(retPP)
+                let partsProducedTwoDaysAgo = calculatePartsProduced(twoDaysAgoRetPP)
 
                 let emailData = {
                     bucket: bucket,
-                    productivity: productivity,
-                    totalOnTime: totalOnTime,
-                    totalCycleTime: totalCycleTime,
-                    averageCycleTime: averageCycleTime,
-                    partsProduced: partsProduced
+                    productivity: productivityYesterday,
+                    totalOnTime: totalOnTimeYesterday,
+                    totalCycleTime: totalCycleTimeYesterday,
+                    averageCycleTime: averageCycleTimeYesterday,
+                    partsProduced: partsProducedYesterday
                 }
                 structuredReturnData.push(emailData)
             }
@@ -410,37 +439,38 @@ app.post('/email-info/', jsonParser, (req, res) => {
 
         }
 
-        res.send(structuredReturnData)
+        res.status(200).send(structuredReturnData)
     }
 
 
-    async function getMachineHoursData(bucketToGet) {
+    async function getMachineHoursData(bucketToGet,start,stop) {
         const machineHoursQuery = `from(bucket: "${bucketToGet}")
-        |> range(start: today())
-        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-        |> filter(fn: (r) => r["_field"] == "Machine Hours")`;
+      |> range(start: ${start}, stop: ${stop})
+      |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+      |> filter(fn: (r) => r["_field"] == "Machine Hours")
+      |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
+
         const retArr = [];
         const machineHoursRetObj = await queryClient.collectRows(machineHoursQuery)
+        console.log(machineHoursRetObj.length)
         for (let i = 0; i < machineHoursRetObj.length; i++) {
             const machineHoursObj = {
                 bucket: bucketToGet,
                 _field: machineHoursRetObj[i]._field,
                 _value: machineHoursRetObj[i]._value,
-                _time: machineHoursRetObj[i]._time,
-                _wasOneShot: machineHoursRetObj[i]["Alarm One Shot"]
+                _time: machineHoursRetObj[i]._time
             }
-            if (machineHoursObj._wasOneShot === undefined) {
-                retArr.push(machineHoursObj)
-            }
+            retArr.push(machineHoursObj)
         }
 
         return retArr
     }
-    async function getRunTimeData(bucketToGet) {
+    async function getRunTimeData(bucketToGet,start,stop) {
         const runTimeQuery = `from(bucket: "${bucketToGet}")
-        |> range(start: today())
-        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-        |> filter(fn: (r) => r["_field"] == "Run Time")`;
+      |> range(start: ${start}, stop: ${stop})
+      |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+      |> filter(fn: (r) => r["_field"] == "Run Time")
+      |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
         const retArr = [];
         const runTimeRetObj = await queryClient.collectRows(runTimeQuery)
         for (let i = 0; i < runTimeRetObj.length; i++) {
@@ -449,19 +479,17 @@ app.post('/email-info/', jsonParser, (req, res) => {
                 _field: runTimeRetObj[i]._field,
                 _value: runTimeRetObj[i]._value,
                 _time: runTimeRetObj[i]._time,
-                _wasOneShot: runTimeRetObj[i]["Alarm One Shot"]
             }
-            if (runTimeObj._wasOneShot === undefined) {
-                retArr.push(runTimeObj)
-            }
+            retArr.push(runTimeObj)
         }
         return retArr
     }
-    async function getCycleTimeData(bucketToGet) {
+    async function getCycleTimeData(bucketToGet,start,stop) {
         const cycleTimeQuery = `from(bucket: "${bucketToGet}")
-        |> range(start: today())
-        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-        |> filter(fn: (r) => r["_field"] == "Cycle Time")`;
+      |> range(start: ${start}, stop: ${stop})
+      |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+      |> filter(fn: (r) => r["_field"] == "Cycle Time")
+      |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
         const retArr = [];
         const cycleTimeRetObj = await queryClient.collectRows(cycleTimeQuery)
         for (let i = 0; i < cycleTimeRetObj.length; i++) {
@@ -470,19 +498,17 @@ app.post('/email-info/', jsonParser, (req, res) => {
                 _field: cycleTimeRetObj[i]._field,
                 _value: cycleTimeRetObj[i]._value,
                 _time: cycleTimeRetObj[i]._time,
-                _wasOneShot: cycleTimeRetObj[i]["Alarm One Shot"]
             }
-            if (cycleTimeObj._wasOneShot === undefined) {
-                retArr.push(cycleTimeObj)
-            }
+            retArr.push(cycleTimeObj)
         }
         return retArr
     }
-    async function getPartProductionData(bucketToGet) {
+    async function getPartProductionData(bucketToGet,start,stop) {
         const partProductionQuery = `from(bucket: "${bucketToGet}")
-        |> range(start: today())
-        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-        |> filter(fn: (r) => r["_field"] == "Parts Counter")`;
+      |> range(start: ${start}, stop: ${stop})
+      |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+      |> filter(fn: (r) => r["_field"] == "Parts Counter")
+      |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
         const retArr = [];
         const partProductionRetObj = await queryClient.collectRows(partProductionQuery)
         for (let i = 0; i < partProductionRetObj.length; i++) {
@@ -491,12 +517,9 @@ app.post('/email-info/', jsonParser, (req, res) => {
                 _field: partProductionRetObj[i]._field,
                 _value: partProductionRetObj[i]._value,
                 _time: partProductionRetObj[i]._time,
-                _wasOneShot: partProductionRetObj[i]["Alarm One Shot"]
             }
-            if (partProductionObj._wasOneShot === undefined) {
-                retArr.push(partProductionObj)
-            }
-        }   
+            retArr.push(partProductionObj)
+        }
         return retArr
     }
 
