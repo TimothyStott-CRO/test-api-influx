@@ -1,0 +1,73 @@
+  //create idle time object variables
+                let idleTimeTotal = productivityObj.idleTime
+                let betterTodayTodalDowntime = productivityObj.betterTodayIdleTime;
+                let percentageOfDowntimeChange = (productivityObj.unformattedIdleTime - productivityObj.unformattedPrevIdleTime) / productivityObj.unformattedPrevIdleTime * 100;
+                let averageTimeBetweenParts;
+                let prevAverageTimeBetweenParts;
+                let partsProducedToday = true;
+                let partsProducedYesterday = true;
+                let formattedAverageTime;
+
+                if (partsProducedObj.partsProducedTotal == 0) {
+                    console.log("no parts produced today")
+                    formattedAverageTime = "No Parts Produced";
+                    partsProducedToday = false;
+                } else {
+                    averageTimeBetweenParts = productivityObj.unformattedIdleTime / partsProducedObj.partsProducedTotal;
+                    formattedAverageTime = formatTotal(averageTimeBetweenParts);
+                }
+
+                if (partsProducedObj.prevPartsProducedTotal == 0) {
+                    console.log("no parts produced yesterday")
+                    partsProducedYesterday = false;
+                    prevAverageTimeBetweenParts = "No Parts Produced";
+                } else {
+                    prevAverageTimeBetweenParts = productivityObj.unformattedPrevIdleTime / partsProducedObj.prevPartsProducedTotal;
+                }
+
+                let betterTodayAverageDowntime;
+                let percentageOfAverageDowntimeChange;
+                if (partsProducedToday == false) {
+                    betterTodayAverageDowntime = false;
+                    percentageOfAverageDowntimeChange = -100;
+                }
+                else if (partsProducedYesterday == false) {
+                    betterTodayAverageDowntime = true;
+                    percentageOfAverageDowntimeChange = 100;
+                }
+                else {
+                    betterTodayAverageDowntime = averageTimeBetweenParts < prevAverageTimeBetweenParts;
+                    percentageOfAverageDowntimeChange = ((averageTimeBetweenParts - prevAverageTimeBetweenParts) / prevAverageTimeBetweenParts * 100);
+                }
+
+
+
+                let idleTimeObj = {
+                    totalIdleTime: idleTimeTotal,
+                    betterTodayTotalDowntime: betterTodayTodalDowntime,
+                    percentageOfDowntimeChange: percentageOfDowntimeChange.toFixed(2) + "%",
+                    averageTimeBetweenParts: formattedAverageTime,
+                    betterTodayAverageDowntime: betterTodayAverageDowntime,
+                    percentageOfAverageDowntimeChange: percentageOfAverageDowntimeChange.toFixed(2) + "%"
+                }
+
+
+
+
+
+
+                
+              <td class="td-element">
+              <div style="margin:0 20px">
+                  <div class="td-image-container">
+                      <img src="${loadTimeImageLink}" class="td-img"/>
+                  </div>
+                  <h3 class="td-h3">Idle Time</h3>
+                  <div class="data-text">
+                      ${idleTime}<img src="${idleTimeChangeImgSrc}" class="arrow-img"/><span style="${betterTodayIdleTime ? 'color:green': 'color:red'}">${percentageChangeIdleTime}</span>
+                  </div>
+              </div>
+              <div>
+                  <p>Average amount of idle time between completed parts</p>
+              </div>
+            </td>

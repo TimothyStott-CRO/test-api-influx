@@ -44,326 +44,12 @@ app.get('/', (req, res) => {
     res.send('Please direct your query to a subdirectory')
 })
 
-app.get('/buckets', (req, res) => {
-    var resArr = [];
-    var retArry = [];
-    queryClient.queryRaw(query)
-        .then(result => {
-            resArr = result.split('\n');
-
-        })
-        .catch(error => {
-            console.error('Error listing buckets:', error);
-        })
-        .then(() => {
-            retArry = resArr.slice(4, resArr.length - 4)
-            retArry = retArry.map((item) => {
-                return item.slice(4, item.length - 1)
-            })
-            res.send(retArry)
-        })
-})
-
-app.get('/gen-info/:bucket', (req, res) => {
-    let bucket = req.params['bucket'];
-
-    var genInfoQuery = `from(bucket: "${bucket}")
-  |> range(start: -30d)
-  |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-  |> last()`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(genInfoQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            retArr.push({ _field: "Serial Number", _value: bucket })
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/absolute-positions/:bucket', (req, res) => {
-    let bucket = req.params['bucket'];
-
-    var postionInfoQuery = `from(bucket: "${bucket}")
-    |> range(start: -24h)
-    |> filter(fn: (r) => r["_measurement"] == "Absolute Postion Info")
-    |> last()`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(postionInfoQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject);
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/all-alarms-and-messages/:bucket/:range?', (req, res) => {
-    let bucket = req.params['bucket'];
-    let range = req.params['range'];
-    if (range == undefined) {
-        range = "-7d"
-    }
-    var dailyAlarmQuery = `from(bucket: "${bucket}")
-    |> range(start: ${range})
-    |> filter(fn: (r) => r["_measurement"] == "Alarms and Messages")`
-
-    let tableObject;
-    let messArr = [];
-    let alarmArr = [];
-    queryClient.queryRows(dailyAlarmQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            if (tableObject._field == "Message") {
-                messArr.push(tableObject)
-            }
-            else if (tableObject._field == "Alarm") {
-                alarmArr.push(tableObject)
-            }
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send({ messages: messArr, alarms: alarmArr })
-        }
-    })
-})
-
-app.get('/mode-and-status-info/:bucket/:range?', (req, res) => {
-    let bucket = req.params['bucket'];
-    let range = req.params['range'];
-    if (range == undefined) {
-        range = "-7d"
-    }
-    var dailyAlarmQuery = `from(bucket: "${bucket}")
-    |> range(start: ${range})
-    |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-    |> filter(fn: (r) => r["_field"] == "Mode" or r["_field"] == "Status")`
-
-    let tableObject;
-    let modeArr = [];
-    let statusArr = [];
-    queryClient.queryRows(dailyAlarmQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            if (tableObject._field == "Mode") {
-                modeArr.push(tableObject)
-            }
-            else if (tableObject._field == "Status") {
-                statusArr.push(tableObject)
-            }
-        }
-        ,
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send({ mode: modeArr, status: statusArr })
-        }
-
-    })
-})
-
-app.get('/historical-loads-and-temps/:bucket/:range?/', (req, res) => {
-    let bucket = req.params['bucket'];
-    let range = req.params['range'];
-    if (range == undefined) {
-        range = "-24h"
-    }
-    var dailyAlarmQuery = `from(bucket: "${bucket}")
-    |> range(start: ${range})
-    |> filter(fn: (r) => r["_measurement"] == "Axis Loads" or r["_measurement"] == "Axis Voltages" or r["_measurement"] == "Encoder Temps" or r["_measurement"] == "Motor Temps")`
-
-    let tableObject;
-    let loadArr = [];
-    let voltArr = [];
-    let encTempArr = [];
-    let motTempArr = [];
-    queryClient.queryRows(dailyAlarmQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            if (tableObject._measurement == "Axis Loads") {
-                loadArr.push(tableObject)
-            }
-            else if (tableObject._measurement == "Axis Voltages") {
-                voltArr.push(tableObject)
-            }
-            else if (tableObject._measurement == "Encoder Temps") {
-                encTempArr.push(tableObject)
-            }
-            else if (tableObject._measurement == "Motor Temps") {
-                motTempArr.push(tableObject)
-            }
-        }
-        ,
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send({ loads: loadArr, voltages: voltArr, encoderTemps: encTempArr, motorTemps: motTempArr })
-        }
-    })
-})
-
-app.get('/alarms-details/:bucket/:time/', (req, res) => {
-    let bucket = req.params['bucket'];
-    var startTime = (new Date((Date.parse(req.params['time'])) - (5 * 60 * 1000))).toISOString();
-    var endTime = (new Date((Date.parse(req.params['time'])) + (5 * 60 * 1000))).toISOString();
-
-
-    var dailyAlarmQuery = `from(bucket: "${bucket}")
-    |> range(start: ${startTime}, stop: ${endTime})
-    |> filter(fn: (r) => r["_measurement"] == "Alarms and Messages")`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(dailyAlarmQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject)
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/alarms-details-sm/:bucket/:time/', (req, res) => {
-    let bucket = req.params['bucket'];
-    var startTime = (new Date((Date.parse(req.params['time'])) - (10 * 60 * 1000))).toISOString();
-    var endTime = (new Date((Date.parse(req.params['time'])) + (5 * 60 * 1000))).toISOString();
-
-
-    var smQuery = `from(bucket: "${bucket}")
-    |> range(start: ${startTime}, stop: ${endTime})
-    |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-    |> filter(fn: (r) => r["_field"] == "Mode" or r["_field"] == "Status")`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(smQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject)
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/alarms-details-lt/:bucket/:time/', (req, res) => {
-    let bucket = req.params['bucket'];
-    var startTime = (new Date((Date.parse(req.params['time'])) - (5 * 60 * 1000))).toISOString();
-    var endTime = (new Date((Date.parse(req.params['time'])) + (5 * 60 * 1000))).toISOString();
-
-
-    var smQuery = `from(bucket: "${bucket}")
-    |> range(start: ${startTime}, stop: ${endTime})
-    |> filter(fn: (r) => r  ["_measurement"] == "Axis Loads" or r["_measurement"] == "Axis Voltages" or r["_measurement"] == "Encoder Temps" or r["_measurement"] == "Motor Temps")`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(smQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject)
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/alarms-details-os/:bucket/:time/', (req, res) => {
-    let bucket = req.params['bucket'];
-    var startTime = (new Date((Date.parse(req.params['time'])) - (.15 * 60 * 1000))).toISOString();
-    var endTime = (new Date((Date.parse(req.params['time'])) + (.15 * 60 * 1000))).toISOString();
-
-
-    var smQuery = `from(bucket: "${bucket}")
-    |> range(start: ${startTime}, stop: ${endTime})
-    |> filter(fn: (r) => r["Alarm One Shot"] == "Post-Alarm" or r["Alarm One Shot"] == "Pre-Alarm")`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(smQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject)
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
-
-app.get('/alarms-details-progam-details/:bucket/:time/', (req, res) => {
-    let bucket = req.params['bucket'];
-    var startTime = (new Date((Date.parse(req.params['time'])) - (3 * 60 * 1000))).toISOString();
-    var endTime = (new Date((Date.parse(req.params['time'])) + (3 * 60 * 1000))).toISOString();
-
-
-    var programQuery = `from(bucket: "${bucket}")
-    |> range(start: ${startTime}, stop: ${endTime})
-    |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-    |> filter(fn: (r) => r["_field"] == "Program Line")`
-
-
-    let tableObject;
-    let retArr = [];
-    queryClient.queryRows(programQuery, {
-        next: (row, tableMeta) => {
-            tableObject = tableMeta.toObject(row)
-            retArr.push(tableObject)
-        },
-        error: (error) => {
-            console.log(error)
-        },
-        complete: () => {
-            res.send(retArr)
-        }
-    })
-})
 
 app.post('/email-info/', jsonParser, (req, res) => {
-    const TWODAYSAGO = (new Date(Date.now() - 172800000).toISOString().split('T')[0]).toString();
-    const YESTERDAY = (new Date(Date.now() - 86400000).toISOString().split('T')[0]).toString();
-    const TODAY = (new Date().toISOString().split('T')[0]).toString();
+    const twoDaysAgo = (new Date(Date.now() - 172800000).toISOString().split('T')[0]).toString();
+    const yesterday = (new Date(Date.now() - 86400000).toISOString().split('T')[0]).toString();
+    const today = (new Date().toISOString().split('T')[0]).toString();
+    //const today = (new Date(Date.now() - 259200000).toISOString().split('T')[0]).toString();
     const userToken = req.body.token;
     const userOrg = req.body.org;
     const buckets = req.body.buckets;
@@ -374,61 +60,57 @@ app.post('/email-info/', jsonParser, (req, res) => {
     aggregateData(buckets)
 
     async function aggregateData(buckets) {
-        const unstructuredMachineHoursYesterday = [];
-        const unstructuredMachineHoursTwoDaysAgo = [];
+        const unstructuredMachineHours = [];
+        const unstructuredMachineHoursPrev = [];
 
-        const unstructuredRunTimeYesterday = [];
-        const unstructuredRunTimeTwoDaysAgo = [];
+        const unstructuredRunTime = [];
+        const unstructuredRunTimePrev = [];
 
-        const unstructuredCycleTimeYesterday = [];
-        const unstructuredCycleTimeTwoDaysAgo = [];
+        const unstructuredCycleTime = [];
+        const unstructuredCycleTimePrev = [];
 
-        let unstructuredPartProductionYesterday = [];
-        let unstructuredPartProductionTwoDaysAgo = [];
+        let unstructuredPartProduction = [];
+        let unstructuredPartProductionPrev = [];
         let structuredReturnData = [];
+
         for (const bucket of buckets) {
             try {
-                const yesterdaysRetMH = await getMachineHoursData(bucket,YESTERDAY,TODAY)
-                const twoDaysAgoRetMH = await getMachineHoursData(bucket,TWODAYSAGO,YESTERDAY)
-                unstructuredMachineHoursYesterday.push(yesterdaysRetMH)
-                unstructuredMachineHoursTwoDaysAgo.push(yesterdaysRetMH)
+                const retMachineHours = await getMachineHoursData(bucket, yesterday, today)
+                const previousRetMachineHours = await getMachineHoursData(bucket, twoDaysAgo, yesterday, true)
+                unstructuredMachineHours.push(retMachineHours)
+                unstructuredMachineHoursPrev.push(previousRetMachineHours)
 
 
-                const retRT = await getRunTimeData(bucket,YESTERDAY,TODAY)
-                const twoDaysAgoRetRT = await getRunTimeData(bucket,TWODAYSAGO,YESTERDAY)                
-                unstructuredRunTimeYesterday.push(retRT)
-                unstructuredRunTimeTwoDaysAgo.push(twoDaysAgoRetRT)
+                const retRunTime = await getRunTimeData(bucket, yesterday, today)
+                const previousRetRunTime = await getRunTimeData(bucket, twoDaysAgo, yesterday, true)
+                unstructuredRunTime.push(retRunTime)
+                unstructuredRunTimePrev.push(previousRetRunTime)
 
-                const retCT = await getCycleTimeData(bucket,YESTERDAY,TODAY)
-                const twoDaysAgoRetCT = await getCycleTimeData(bucket,TWODAYSAGO,YESTERDAY)
+                const retCycleTime = await getCycleTimeData(bucket, yesterday, today)
+                const preiviousRetCycleTime = await getCycleTimeData(bucket, twoDaysAgo, yesterday, true)
+                unstructuredCycleTime.push(retCycleTime)
+                unstructuredCycleTimePrev.push(preiviousRetCycleTime)
 
-                const retPP = await getPartProductionData(bucket, YESTERDAY, TODAY)
-                const twoDaysAgoRetPP = await getPartProductionData(bucket, TWODAYSAGO, YESTERDAY)                
-                unstructuredPartProductionYesterday.push(retPP)
-                unstructuredPartProductionTwoDaysAgo.push(twoDaysAgoRetPP)
+                const retPartsProduced = await getPartProductionData(bucket, yesterday, today)
+                const previousRetPartsProduced = await getPartProductionData(bucket, twoDaysAgo, yesterday, true)
+                unstructuredPartProduction.push(retPartsProduced)
+                unstructuredPartProductionPrev.push(previousRetPartsProduced)
 
-                let productivityYesterday = calculateProductivity(retRT, yesterdaysRetMH)
-                let productivityTwoDaysAgo = calculateProductivity(twoDaysAgoRetRT, twoDaysAgoRetMH)
+                let cycleTimeObj = calculateCycleTimeObj(retCycleTime, preiviousRetCycleTime)
 
-                let totalOnTimeYesterday = calculateMachineHoursTotal(yesterdaysRetMH)
-                let totalOnTimeTwoDaysAgo = calculateMachineHoursTotal(twoDaysAgoRetMH)
+                let productivityObj = calculateProductivity(retRunTime, retMachineHours, previousRetRunTime, previousRetMachineHours)
 
-                let totalCycleTimeYesterday = calculateTotalCycleTime(retCT)
-                let totalCycleTimeTwoDaysAgo = calculateTotalCycleTime(twoDaysAgoRetCT)
+                let totalOnTimeObj = calculateMachineHoursTotal(retMachineHours, previousRetMachineHours)
 
-                let averageCycleTimeYesterday = calculateAverageCycleTime(retCT)
-                let averageCycleTimeTwoDaysAgo = calculateAverageCycleTime(twoDaysAgoRetCT)
+                let partsProducedObj = calculatePartsProduced(retPartsProduced, previousRetPartsProduced)
 
-                let partsProducedYesterday = calculatePartsProduced(retPP)
-                let partsProducedTwoDaysAgo = calculatePartsProduced(twoDaysAgoRetPP)
 
                 let emailData = {
                     bucket: bucket,
-                    productivity: productivityYesterday,
-                    totalOnTime: totalOnTimeYesterday,
-                    totalCycleTime: totalCycleTimeYesterday,
-                    averageCycleTime: averageCycleTimeYesterday,
-                    partsProduced: partsProducedYesterday
+                    productivity: productivityObj,
+                    totalOnTime: totalOnTimeObj,
+                    cycleTime: cycleTimeObj,
+                    partsProduced: partsProducedObj,
                 }
                 structuredReturnData.push(emailData)
             }
@@ -443,16 +125,33 @@ app.post('/email-info/', jsonParser, (req, res) => {
     }
 
 
-    async function getMachineHoursData(bucketToGet,start,stop) {
+    async function getMachineHoursData(bucketToGet, start, stop, previousDay = false) {
+        let _start = start
+        let _stop = stop
         const machineHoursQuery = `from(bucket: "${bucketToGet}")
-      |> range(start: ${start}, stop: ${stop})
-      |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-      |> filter(fn: (r) => r["_field"] == "Machine Hours")
-      |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
+            |> range(start: ${_start}, stop: ${_stop})
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Machine Hours")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
 
-        const retArr = [];
-        const machineHoursRetObj = await queryClient.collectRows(machineHoursQuery)
-        console.log(machineHoursRetObj.length)
+        let retArr = [];
+        let machineHoursRetObj = await queryClient.collectRows(machineHoursQuery)
+
+        let count = 0;
+        while (previousDay && machineHoursRetObj.length === 0 && count < 5) {
+            _start = (new Date((Date.parse(_start)) - (86400000))).toISOString();
+            _stop = (new Date((Date.parse(_stop)) - (86400000))).toISOString();
+            let machineHoursQuery = `from(bucket: "${bucketToGet}")
+                |> range(start: ${_start}, stop: ${_stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Machine Hours")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
+            machineHoursRetObj = await queryClient.collectRows(machineHoursQuery)
+            count++
+        }
+
+
+
         for (let i = 0; i < machineHoursRetObj.length; i++) {
             const machineHoursObj = {
                 bucket: bucketToGet,
@@ -465,14 +164,30 @@ app.post('/email-info/', jsonParser, (req, res) => {
 
         return retArr
     }
-    async function getRunTimeData(bucketToGet,start,stop) {
+    async function getRunTimeData(bucketToGet, start, stop, previousDay = false) {
+        let _start = start
+        let _stop = stop
         const runTimeQuery = `from(bucket: "${bucketToGet}")
-      |> range(start: ${start}, stop: ${stop})
+      |> range(start: ${_start}, stop: ${_stop})
       |> filter(fn: (r) => r["_measurement"] == "Gen Info")
       |> filter(fn: (r) => r["_field"] == "Run Time")
       |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
         const retArr = [];
-        const runTimeRetObj = await queryClient.collectRows(runTimeQuery)
+        let runTimeRetObj = await queryClient.collectRows(runTimeQuery)
+
+        let count = 0;
+        while (previousDay && runTimeRetObj.length === 0 && count < 5) {
+            _start = (new Date((Date.parse(_start)) - (86400000))).toISOString();
+            _stop = (new Date((Date.parse(_stop)) - (86400000))).toISOString();
+            let runTimeQuery = `from(bucket: "${bucketToGet}")
+                |> range(start: ${_start}, stop: ${_stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Run Time")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
+            runTimeRetObj = await queryClient.collectRows(runTimeQuery)
+            count++
+        }
+
         for (let i = 0; i < runTimeRetObj.length; i++) {
             const runTimeObj = {
                 bucket: bucketToGet,
@@ -484,14 +199,30 @@ app.post('/email-info/', jsonParser, (req, res) => {
         }
         return retArr
     }
-    async function getCycleTimeData(bucketToGet,start,stop) {
+    async function getCycleTimeData(bucketToGet, start, stop, previousDay = false) {
+        let _start = start
+        let _stop = stop
         const cycleTimeQuery = `from(bucket: "${bucketToGet}")
-      |> range(start: ${start}, stop: ${stop})
+      |> range(start: ${_start}, stop: ${_stop})
       |> filter(fn: (r) => r["_measurement"] == "Gen Info")
       |> filter(fn: (r) => r["_field"] == "Cycle Time")
       |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
         const retArr = [];
-        const cycleTimeRetObj = await queryClient.collectRows(cycleTimeQuery)
+        let cycleTimeRetObj = await queryClient.collectRows(cycleTimeQuery)
+
+        let count = 0;
+        while (previousDay && cycleTimeRetObj.length === 0 && count < 5) {
+            _start = (new Date((Date.parse(_start)) - (86400000))).toISOString();
+            _stop = (new Date((Date.parse(_stop)) - (86400000))).toISOString();
+            let cycleTimeQuery = `from(bucket: "${bucketToGet}")
+                |> range(start: ${_start}, stop: ${_stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Cycle Time")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
+            cycleTimeRetObj = await queryClient.collectRows(cycleTimeQuery)
+            count++
+        }
+
         for (let i = 0; i < cycleTimeRetObj.length; i++) {
             const cycleTimeObj = {
                 bucket: bucketToGet,
@@ -503,14 +234,32 @@ app.post('/email-info/', jsonParser, (req, res) => {
         }
         return retArr
     }
-    async function getPartProductionData(bucketToGet,start,stop) {
+    async function getPartProductionData(bucketToGet, start, stop, previousDay = false) {
+        let _start = start
+        let _stop = stop
         const partProductionQuery = `from(bucket: "${bucketToGet}")
-      |> range(start: ${start}, stop: ${stop})
+      |> range(start: ${_start}, stop: ${_stop})
       |> filter(fn: (r) => r["_measurement"] == "Gen Info")
       |> filter(fn: (r) => r["_field"] == "Parts Counter")
       |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
         const retArr = [];
-        const partProductionRetObj = await queryClient.collectRows(partProductionQuery)
+        let partProductionRetObj = await queryClient.collectRows(partProductionQuery)
+
+        let count = 0;
+        if (previousDay && partProductionRetObj.length === 0 && count < 5) {
+            _start = (new Date((Date.parse(_start)) - (86400000))).toISOString();
+            _stop = (new Date((Date.parse(_stop)) - (86400000))).toISOString();
+            let partProductionQuery = `from(bucket: "${bucketToGet}")
+                |> range(start: ${_start}, stop: ${_stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Parts Counter")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])`;
+            partProductionRetObj = await queryClient.collectRows(partProductionQuery)
+            count++
+        }
+
+
+
         for (let i = 0; i < partProductionRetObj.length; i++) {
             const partProductionObj = {
                 bucket: bucketToGet,
@@ -526,118 +275,481 @@ app.post('/email-info/', jsonParser, (req, res) => {
 
 
 
-    function calculateTotalCycleTime(cycleTimesArray) {
-        let totalInSeconds = 0;
-        let secondsArray = [];
-        if (cycleTimesArray.length === 0) {
-            return 0
-        }
-        if (cycleTimesArray.length === 1) {
-            return cycleTimesArray[0]._value
-        }
-        for (let i = 0; i < cycleTimesArray.length; i++) {
+    function calculateCycleTimeObj(cycleTimesArray, prevCycleTimeArray) {
+        // aggregates the cycle times into arrays with each time
+        let secondsArray = buildCycleTimeSecondsTotalArray(cycleTimesArray);
+        let prevSecondsArray = buildCycleTimeSecondsTotalArray(prevCycleTimeArray);
 
-            if (i === cycleTimesArray.length - 1 && secondsArray.length === 0) {
-                return cycleTimesArray[i]._value
+        // calcuate total via the aggregate arrays
+        let totalInSeconds = calculateTotalTimeInSeconds(secondsArray);
+        let prevTotalInSeconds = calculateTotalTimeInSeconds(prevSecondsArray);
+
+        // format the total time into a string
+        let formattedTotalTime = formatTotalTime(totalInSeconds);
+        let formattedPrevTotalTime = formatTotalTime(prevTotalInSeconds);
+
+        // calculate better today boolean
+        let betterTodayTotal = totalInSeconds > prevTotalInSeconds;
+
+        // calculate the percentage change between the two totals
+        let percentageChange = calculatePercentageChange(totalInSeconds, prevTotalInSeconds);
+
+        // calculate the average cycle times
+        let averageCycleTime = calculateAverageCycleTime(totalInSeconds, secondsArray.length);
+        let prevAverageCycleTime = calculateAverageCycleTime(prevTotalInSeconds, prevSecondsArray.length);
+
+        // format the average cycle time into a string
+        let formattedAverageCycleTime = formatTotalTime(averageCycleTime);
+        let formattedPrevAverageCycleTime = formatTotalTime(prevAverageCycleTime);
+
+
+        let cycleTimeReturnObj = {
+            totalCycleTime: formattedTotalTime,
+            prevTotalCycleTime: formattedPrevTotalTime,
+            betterTodayTotal: betterTodayTotal,
+            percentageChange: percentageChange,
+            averageCycleTime: formattedAverageCycleTime,
+            prevAverageCycleTime: formattedPrevAverageCycleTime
+
+        }
+
+        function buildCycleTimeSecondsTotalArray(arrayToBuild) {
+            let retArr = [];
+            if (arrayToBuild.length === 0) {
+                return 0
+            }
+            if (arrayToBuild.length === 1) {
+                retArr.push(Math.round((Math.floor(arrayToBuild[0]._value) * 60) + ((arrayToBuild[0]._value % 1) * 100)))
+                return retArr
+            }
+            for (let i = 0; i < arrayToBuild.length; i++) {
+
+                if (i === arrayToBuild.length - 1 && retArr.length === 0) {
+                    retArr.push(Math.round((Math.floor(arrayToBuild[i]._value) * 60) + ((arrayToBuild[i]._value % 1) * 100)))
+                    return retArr
+                }
+
+
+                if (i !== 0 && arrayToBuild[i]._value < arrayToBuild[i - 1]._value) {
+                    //turn the cycle time into seconds
+                    retArr.push(Math.round((Math.floor(arrayToBuild[i - 1]._value) * 60) + ((arrayToBuild[i - 1]._value % 1) * 100)))
+                }
             }
 
+            return retArr
+        }
+        function calculateTotalTimeInSeconds(arrayToCalc) {
+            let retTotal = 0;
+            for (let i = 0; i < arrayToCalc.length; i++) {
+                retTotal += arrayToCalc[i]
+            }
+            return retTotal
+        }
+        function formatTotalTime(totalTimeInSeconds) {
+            const hours = Math.floor(totalTimeInSeconds / 60 / 60);
+            const minutes = Math.floor(totalTimeInSeconds / 60) - (hours * 60);
+            const seconds = Math.floor(totalTimeInSeconds % 60);
 
-            if (i !== 0 && cycleTimesArray[i]._value < cycleTimesArray[i - 1]._value) {
-                //turn the cycle time into seconds
-                secondsArray.push(Math.round((Math.floor(cycleTimesArray[i - 1]._value) * 60) + ((cycleTimesArray[i - 1]._value % 1) * 100)))
+            if (hours === 0 && minutes === 0) {
+                return seconds + "s";
+            } else if (hours === 0) {
+                return minutes + "m " + seconds + "s";
+            } else {
+                return hours + "h " + minutes + "m " + seconds + "s";
             }
         }
-        for (let i = 0; i < secondsArray.length; i++) {
-            totalInSeconds += secondsArray[i]
+        function calculatePercentageChange(totalInSeconds, prevTotalInSeconds) {
+            let percentageChange = 0;
+            if (prevTotalInSeconds === 0) {
+                return "100%"
+            }
+            if (totalInSeconds === 0) {
+                return "-100%"
+            }
+            percentageChange = ((totalInSeconds - prevTotalInSeconds) / prevTotalInSeconds) * 100;
+            return percentageChange.toFixed(2) + "%"
+        }
+        function calculateAverageCycleTime(total, length) {
+            if (total === 0 || length === 0) {
+                return 0
+            }
+            return total / length
         }
 
-        const hours = Math.floor(totalInSeconds / 60 / 60);
-        const minutes = Math.floor(totalInSeconds / 60) - (hours * 60);
-        const seconds = totalInSeconds % 60;
-        if (hours === 0 && minutes === 0) {
-            return seconds + "s";
-        } else if (hours === 0) {
-            return minutes + "m " + seconds + "s";
-        } else {
-            return hours + "h " + minutes + "m " + seconds + "s";
-        }
+
+
+        return cycleTimeReturnObj
+
     }
-    function calculateAverageCycleTime(cycleTimesArray) {
-        let totalInSeconds = 0;
-        let secondsArray = [];
-        let averageInSeconds = 0;
-        if (cycleTimesArray.length === 0) {
-            return 0
-        }
-        if (cycleTimesArray.length === 1) {
-            return cycleTimesArray[0]._value
-        }
-        for (let i = 0; i < cycleTimesArray.length; i++) {
+    function calculateProductivity(runTimesArray, machineHoursArray, prevRunTimesArray, prevMachineHoursArray) {
+        let productivity = calculateProductivity(runTimesArray, machineHoursArray);
+        let prevProductivity = calculateProductivity(prevRunTimesArray, prevMachineHoursArray);
+        let betterToday = productivity > prevProductivity;
+        let percentageChange = calculatePercentageChange(productivity, prevProductivity);
 
-            if (i === cycleTimesArray.length - 1 && secondsArray.length === 0) {
-                return cycleTimesArray[i]._value
+        let downtime = calculateDowntime(runTimesArray, machineHoursArray);
+        let prevDowntime = calculateDowntime(prevRunTimesArray, prevMachineHoursArray);
+        let betterTodayDowntime = downtime < prevDowntime;
+        //multiplying by negative one gives the correct % change for downtime as more downtime is bad and less is gooder
+        let percentageChangeDowntime = (calculatePercentageChange(downtime, prevDowntime) * -1);
+
+        let retObj = {
+            productivity: productivity + "%",
+            prevProductivity: prevProductivity + "%",
+            betterTodayProductivity: betterToday,
+            percentageChangeProductivity: percentageChange + "%",
+            downtime: formatTotal(downtime),
+            prevDowntime: formatTotal(prevDowntime),
+            betterTodayDowntime: betterTodayDowntime,
+            percentageChangeDowntime: percentageChangeDowntime + "%"
+        }
+
+        function calculateProductivity(runTimeToCalc, machineHoursToCalc) {
+            //if there are no run hours or machine hours then there is no productivity
+            if (runTimeToCalc.length === 0 || machineHoursToCalc.length === 0) {
+                return 0
+            }
+            if (runTimeToCalc.length === 1 || machineHoursToCalc.length === 1) {
+                return 0
             }
 
+            let runTimeTotal = runTimeToCalc[runTimeToCalc.length - 1]._value - runTimeToCalc[0]._value;
+            let machineHoursTotal = machineHoursToCalc[machineHoursToCalc.length - 1]._value - machineHoursToCalc[0]._value;
 
-            if (i !== 0 && cycleTimesArray[i]._value < cycleTimesArray[i - 1]._value) {
-                //turn the cycle time into seconds
-                secondsArray.push(Math.round((Math.floor(cycleTimesArray[i - 1]._value) * 60) + ((cycleTimesArray[i - 1]._value % 1) * 100)))
+            //if there are no machine hours this would indicate it was flipped on and off twice but for just one minute at a time which would indicate no run time
+            //if there are no run hours regardless of machine hours this would indicate there was no productivity for the day
+            //I want to alleviate the case of dividing 0 by something or just dividing by 0
+            if (machineHoursTotal === 0 || runTimeTotal === 0) {
+                return 0
+            }
+            //as long as both of these values are non zero the division can occur   
+            let productivityValue = runTimeTotal / machineHoursTotal;
+            return Math.round(((productivityValue.toFixed(2)) * 100));
+        }
+
+        function calculateDowntime(runTimeToCalc, machineHoursToCalc) {
+            //if there are no run hours or machine hours then there is no dowtime
+            if (runTimeToCalc.length === 0 || machineHoursToCalc.length === 0) {
+                return 0
+            }
+            if (runTimeToCalc.length === 1 || machineHoursToCalc.length === 1) {
+                return 0
+            }
+            let runTimeTotal = runTimeToCalc[runTimeToCalc.length - 1]._value - runTimeToCalc[0]._value;
+            let machineHoursTotal = machineHoursToCalc[machineHoursToCalc.length - 1]._value - machineHoursToCalc[0]._value;
+
+            //if there are no machine hours this would indicate it was flipped on and off twice but for just one minute at a time which would indicate no run time
+            //if there are no run hours regardless of machine hours this would indicate there was no productivity for the day
+            //I want to alleviate the case of dividing 0 by something or just dividing by 0
+            if (machineHoursTotal === 0 || runTimeTotal === 0) {
+                return 0
+            }
+
+            let downtimeValue = machineHoursTotal - runTimeTotal;
+            return downtimeValue;
+        }
+
+        function calculatePercentageChange(total, prevTotal) {
+            let percentageChange = 0;
+            if (prevTotal === 0) {
+                return "100"
+            }
+            if (total === 0) {
+                return "-100"
+            }
+            percentageChange = ((total - prevTotal) / prevTotal) * 100;
+            return percentageChange.toFixed(2)
+        }
+
+
+
+
+        return retObj;
+    }
+    function calculateMachineHoursTotal(machineHoursArray, prevMachineHoursArray) {
+        let machineHoursTotal = calculateMachineHoursTotal(machineHoursArray);
+        let prevMachineHoursTotal = calculateMachineHoursTotal(prevMachineHoursArray);
+        let betterToday = machineHoursTotal > prevMachineHoursTotal;
+        let percentageChange = calculatePercentageChange(machineHoursTotal, prevMachineHoursTotal);
+        let formattedTotal = formatTotal(machineHoursTotal);
+        let formattedPrevTotal = formatTotal(prevMachineHoursTotal);
+        let retObj = {
+            machineHoursTotal: formattedTotal,
+            prevMachineHoursTotal: formattedPrevTotal,
+            betterToday: betterToday,
+            percentageChange: percentageChange + "%"
+        }
+        function calculateMachineHoursTotal(arrayToCalc) {
+
+            if (arrayToCalc.length === 0) {
+                return 0
+            }
+            if (arrayToCalc.length === 1) {
+                return 0
+            }
+            let machineHoursTotal = arrayToCalc[arrayToCalc.length - 1]._value - arrayToCalc[0]._value;
+            return machineHoursTotal;
+        }
+        function calculatePercentageChange(total, prevTotal) {
+            let percentageChange = 0;
+            if (prevTotal === 0) {
+                return "100"
+            }
+            if (total === 0) {
+                return "-100"
+            }
+            percentageChange = ((total - prevTotal) / prevTotal) * 100;
+            return percentageChange.toFixed(2)
+        }
+        function formatTotal(totalToFormat) {
+            const hours = Math.floor(totalToFormat / 60);
+            const minutes = Math.floor(totalToFormat % 60);
+            if (hours === 0) {
+                return minutes + "m";
+            } else {
+                return hours + "h " + minutes + "m";
             }
         }
-        for (let i = 0; i < secondsArray.length; i++) {
-            totalInSeconds += secondsArray[i]
-        }
-        averageInSeconds = Math.floor(totalInSeconds / secondsArray.length)
 
-        const hours = Math.floor(averageInSeconds / 60 / 60);
-        const minutes = Math.floor(averageInSeconds / 60) - (hours * 60);
-        const seconds = averageInSeconds % 60;
-        if (hours === 0 && minutes === 0) {
-            return seconds + "s";
-        } else if (hours === 0) {
-            return minutes + "m " + seconds + "s";
-        } else {
-            return hours + "h " + minutes + "m " + seconds + "s";
-        }
+
+        return retObj;
     }
-    function calculateProductivity(runTimesArray, machineHoursArray) {
-        if (runTimesArray.length === 0 || machineHoursArray.length === 0) {
-            return 0
+    function calculatePartsProduced(partProductionArray, prevPartProductionArray) {
+        let partsProducedTotal = calculatePartsProduced(partProductionArray);
+        let prevPartsProducedTotal = calculatePartsProduced(prevPartProductionArray);
+        let betterToday = partsProducedTotal >= prevPartsProducedTotal;
+
+        let percentageChange = calculatPercentageChagned(partsProducedTotal, prevPartsProducedTotal)
+
+
+        let retObj = {
+            partsProducedTotal: partsProducedTotal,
+            betterToday: betterToday,
+            percentageChange: percentageChange + "%",
+            prevPartsProducedTotal: prevPartsProducedTotal
         }
-        if (runTimesArray.length === 1 || machineHoursArray.length === 1) {
-            return 0
+
+        function calculatePartsProduced(arrayToCalc) {
+            if (arrayToCalc.length === 0) {
+                return 0
+            }
+            if (arrayToCalc.length === 1) {
+                return 1
+            }
+            let partsProducedTotal = arrayToCalc[arrayToCalc.length - 1]._value - arrayToCalc[0]._value;
+            return partsProducedTotal;
         }
-        let runTimeTotal = runTimesArray[runTimesArray.length - 1]._value - runTimesArray[0]._value;
-        let machineHoursTotal = machineHoursArray[machineHoursArray.length - 1]._value - machineHoursArray[0]._value;
-        let productivityValue = runTimeTotal / machineHoursTotal;
-        return Math.round(((productivityValue.toFixed(2)) * 100));
+
+        function calculatPercentageChagned(total, prevTotal) {
+            if (prevTotal === 0 && total != 0) {
+                return 100;
+            }
+            if (prevTotal != 0 && total === 0) {
+                return -100;
+            }
+            if (prevTotal === 0 && total === 0) {
+                return 0;
+            }
+            return (((total - prevTotal) / prevTotal) * 100).toFixed(2);
+        }
+        return retObj;
     }
-    function calculateMachineHoursTotal(machineHoursArray) {
-        if (machineHoursArray.length === 0) {
-            return 0
-        }
-        if (machineHoursArray.length === 1) {
-            return 0
-        }
-        let machineHoursTotal = machineHoursArray[machineHoursArray.length - 1]._value - machineHoursArray[0]._value;
-        const hours = Math.floor(machineHoursTotal / 60);
-        const minutes = Math.floor(machineHoursTotal % 60);
+
+
+    function formatTotal(totalToFormat) {
+        const hours = Math.floor(totalToFormat / 60);
+        const minutes = Math.floor(totalToFormat % 60);
         if (hours === 0) {
             return minutes + "m";
         } else {
             return hours + "h " + minutes + "m";
         }
     }
-    function calculatePartsProduced(partProductionArray) {
-        if (partProductionArray.length === 0) {
-            return 0
+
+})
+
+app.post('/sfm-options/', jsonParser, (req, res) => {
+    console.log(req.body)
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const measurment = req.body.measurement;
+    const queryClient = createQueryClient(url, userToken, userOrg)
+
+    const getData = async () => {
+        const optionsQuery = `from(bucket: "${bucket}")
+    |> range(start: 0)
+    |> filter(fn: (r) => r["_measurement"] == "${measurment}")
+    |> filter(fn: (r) => not exists r["Alarm One Shot"])
+    |> last()
+    |> keep(columns: ["_field"])`
+
+        try {
+            const optionsRetObj = await queryClient.collectRows(optionsQuery)
+            res.status(200).send(optionsRetObj)
         }
-        if (partProductionArray.length === 1) {
-            return 1
+        catch (err) {
+            console.log(err)
         }
-        let partsProducedTotal = partProductionArray[partProductionArray.length - 1]._value - partProductionArray[0]._value;
-        return partsProducedTotal;
     }
+    getData()
+})
+
+app.post('/sfm-data/', jsonParser, (req, res) => {
+    console.log(req.body)
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const measurment = req.body.measurement;
+    const field = req.body.field;
+    const queryClient = createQueryClient(url, userToken, userOrg)
+
+    const getData = async () => {
+        const dataQuery = `from(bucket: "${bucket}")
+        |> range(start: 0)
+        |> filter(fn: (r) => r["_measurement"] == "${measurment}")
+        |> filter(fn: (r) => r["_field"] == "${field}")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> last()`
+
+        try {
+            const dataRetObj = await queryClient.collectRows(dataQuery)
+            res.status(200).send(dataRetObj)
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    getData()
+})
+
+app.post('/sfm-measurements/', jsonParser, (req, res) => {
+    console.log(req.body)
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const queryClient = createQueryClient(url, userToken, userOrg)
+
+    const getData = async () => {
+        const optionsQuery = `import "influxdata/influxdb/schema"
+        schema.measurements(bucket: "${bucket}")`
+        try {
+            const optionsRetObj = await queryClient.collectRows(optionsQuery)
+            res.status(200).send(optionsRetObj)
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    getData()
+})
+
+app.post('/sfm-fields/', jsonParser, (req, res) => {
+    console.log(req.body)
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const measurment = req.body.measurement;
+    const queryClient = createQueryClient(url, userToken, userOrg)
+
+    const getData = async () => {
+        const optionsQuery = `import "influxdata/influxdb/schema"
+        schema.fieldKeys(bucket: "${bucket}", predicate: (r) => r._measurement == "${measurment}")`
+        try {
+            const optionsRetObj = await queryClient.collectRows(optionsQuery)
+            console.log(optionsRetObj)
+            res.status(200).send(optionsRetObj)
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    getData()
+})
+
+app.post('/count', jsonParser, (req, res) => {
+    console.log(req.body)
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const measurment = req.body.measurement;
+    const queryClient = createQueryClient(url, userToken, userOrg)
+
+    const getData = async () => {
+        const optionsQuery = `from(bucket: "${bucket}")
+            |> range(start: -30d)
+            |> count()`
+        try {
+            const optionsRetObj = await queryClient.collectRows(optionsQuery)
+            let retCount = 0;
+            if (optionsRetObj.length > 0) {
+                console.log(optionsRetObj.length)
+                for (let i = 0; i < optionsRetObj.length; i++) {
+                    const element = optionsRetObj[i];
+                    retCount += element._value
+                }
+            }
+
+            res.status(200).send({ "Count": retCount })
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    getData()
+})
+
+app.post('/program-history', jsonParser, (req, res) => {
+    function createProgramReturn(pName,pStart,pEnd,pLoad,pFinish){
+        let retObj = {
+            programName: pName,
+            programStart: pStart,
+            programEnd: pEnd,
+            programLoad: pLoad,
+            programFinish: pFinish
+        }
+        return retObj
+    }    
+    console.log(req.body)
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const range = req.body.range;
+    const queryClient = createQueryClient(url, userToken, userOrg)
+    const getData = async () => {
+        await getStartandPName()
+    }
+    const getStartandPName = async () => {
+        const optionsQuery = `import "experimental"
+
+        programNames = from(bucket: "145G-Prod")
+          |> range(start: -12h)
+          |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+          |> filter(fn: (r) => r["_field"] == "Program Name")
+          |> map(fn: (r) => ({_time: r._time, programName: r._value}))
+        
+        cycleTimes = from(bucket: "145G-Prod")
+          |> range(start: -12h)
+          |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+          |> filter(fn: (r) => r["_field"] == "Cycle Time")
+          |> filter(fn: (r) => r["_value"] == 0.01)
+          |> map(fn: (r) => ({_time: r._time, cycleTime: r._value}))
+        
+        joinedData = join(
+          tables: {programNames: programNames, cycleTimes: cycleTimes},
+          on: ["_time"]
+        ) joinedData`
+        try {
+            const cycleTimeandProgramName = await queryClient.collectRows(optionsQuery)
+            console.log(cycleTimeandProgramName)
+            console.log(cycleTimeandProgramName.length)
+            res.status(200).send({ "Return": cycleTimeandProgramName })
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    getData()
 
 })
 
