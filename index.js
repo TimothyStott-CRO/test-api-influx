@@ -700,56 +700,176 @@ app.post('/count', jsonParser, (req, res) => {
 })
 
 app.post('/program-history', jsonParser, (req, res) => {
-    function createProgramReturn(pName,pStart,pEnd,pLoad,pFinish){
-        let retObj = {
-            programName: pName,
-            programStart: pStart,
-            programEnd: pEnd,
-            programLoad: pLoad,
-            programFinish: pFinish
-        }
-        return retObj
-    }    
-    console.log(req.body)
     const userToken = req.body.token;
     const userOrg = req.body.org;
     const bucket = req.body.bucket;
-    const range = req.body.range;
+    const day = (new Date(req.body.day)).toISOString().split('T')[0].toString();
     const queryClient = createQueryClient(url, userToken, userOrg)
     const getData = async () => {
-        await getStartandPName()
-    }
-    const getStartandPName = async () => {
-        const optionsQuery = `import "experimental"
+        let programObjects = [];
+        let allCycleTimes = await getCycleTimes()
+        let programNames = await getProgramNames()
+        let partsProduced = await getPartProductionData()
 
-        programNames = from(bucket: "145G-Prod")
-          |> range(start: -12h)
-          |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-          |> filter(fn: (r) => r["_field"] == "Program Name")
-          |> map(fn: (r) => ({_time: r._time, programName: r._value}))
-        
-        cycleTimes = from(bucket: "145G-Prod")
-          |> range(start: -12h)
-          |> filter(fn: (r) => r["_measurement"] == "Gen Info")
-          |> filter(fn: (r) => r["_field"] == "Cycle Time")
-          |> filter(fn: (r) => r["_value"] == 0.01)
-          |> map(fn: (r) => ({_time: r._time, cycleTime: r._value}))
-        
-        joinedData = join(
-          tables: {programNames: programNames, cycleTimes: cycleTimes},
-          on: ["_time"]
-        ) joinedData`
+        if (allCycleTimes.length > 0) {
+            for (let i = 0; i < allCycleTimes.length; i++) {
+                if (i != 0 && allCycleTimes[i]._value < allCycleTimes[i - 1]._value) {
+                    //this means we found a completed cycle
+                    let cycleEndTime = allCycleTimes[i - 1]._time
+                    let cycleLength = allCycleTimes[i - 1]._value
+                    let cycleStartTime;
+                    for(let j = i-1; j >= 0; j--){
+                        if(j == 1 || j == 0){
+                            cycleStartTime = allCycleTimes[0]._time
+                            break;
+                        }
+                        if(allCycleTimes[j-1]._value > allCycleTimes[j]._value){
+                            cycleStartTime = allCycleTimes[j]._time
+                            break;
+                        }
+                    }
+                    if (cycleStartTime == undefined) {
+                        cycleStartTime = "No Data"
+                    }
+                    programObjects.push({ cycleStartTime: cycleStartTime, cycleEndTime: cycleEndTime, cycleLength: cycleLength, loadTime: 0, programName: "", didFinish: false, wantedToFinish: true })
+                }
+            }
+            console.log("Program Objects Initialized")
+            console.log("Adding Load Time")
+
+            for (let i = 0; i < programObjects.length; i++) {
+                if (i == 0) {
+                    programObjects[i].loadTime = 0 //first program has no load time
+                }
+                else {
+                    let prevEnd = new Date(programObjects[i - 1].cycleEndTime).getTime();
+                    let currentStart = new Date(programObjects[i].cycleStartTime).getTime();
+                    let difference = currentStart - prevEnd;
+                    let differenceInSeconds = Math.round(difference / 1000); // Convert to seconds
+                    let differenceInMinutes = Math.floor(differenceInSeconds / 60);
+                    let remainingSeconds = differenceInSeconds % 60;
+
+                    programObjects[i].loadTime = `${differenceInMinutes}m ${remainingSeconds}s`;
+                }
+            }
+        }
+
+        else {
+            res.status(200).send([{ cycleStartTime: "No Data", cycleEndTime: "No Data", cycleLength: "No Data", loadTime: "No Data", programName: "No Data", didFinish: "No Data"}])
+            return
+        }
+        //at this point we have cycle start times and end times and load times
+        //add program names
+        console.log("Adding Program Names")
+        if (programNames.length > 0) {
+            for (let i = 0; i < programObjects.length; i++) {
+
+                let cycleStartTime = new Date(programObjects[i].cycleStartTime).getTime()
+                let cycleEndTime = new Date(programObjects[i].cycleEndTime).getTime()
+
+                for (let j = 0; j < programNames.length; j++) {
+                    let programTime = new Date(programNames[j]._time).getTime()
+                    if (programTime > cycleStartTime && programTime < cycleEndTime) {
+                        programObjects[i].programName = programNames[j]._value
+                        break;
+                    }
+                }
+            }
+        }
+        else {
+            return
+        }
+        //at this point names are added and we just need to check to see if it finished
+        console.log("Adding Finished Status")
+        if (partsProduced.length > 0) {
+            for (let i = 0; i < programObjects.length; i++) {
+                let cycleEndTime = new Date(programObjects[i].cycleEndTime).getTime()
+                for (let j = 0; j < partsProduced.length; j++) {
+                    let partTime = new Date(partsProduced[j]._time).getTime()
+                    if (partTime > cycleEndTime - 2000 && partTime < cycleEndTime + 2000) {
+                        programObjects[i].didFinish = true
+                        break;
+                    }
+                }
+            }
+        }
+        else {
+            return
+        }
+
+        //update Times to local
+        console.log("Updating Times to Local and formatting Duration")
+        programObjects.forEach((program) => {
+            program.cycleStartTime = new Date(program.cycleStartTime).toLocaleTimeString()
+            program.cycleEndTime = new Date(program.cycleEndTime).toLocaleTimeString()
+            let cycleLength = program.cycleLength.toString().split(".")
+            program.cycleLength = `${cycleLength[0]}m ${(cycleLength[1])}s`
+        })
+
+        let trueCount = 0;
+        let partsProducedCount = partsProduced.length - 1;
+        programObjects.forEach((program) => {
+            if (program.didFinish) {
+                trueCount++
+            }
+        })
+        console.log("Programs Written As True: " + trueCount)
+        console.log("Parts Produced Count: " + partsProducedCount)
+
+
+        res.status(200).send(programObjects)
+    }
+
+    const getCycleTimes = async () => {
+        console.log("Getting Cycle Times")
+        const cycleTimeQuery = `from(bucket: "${bucket}")
+        |> range(start: ${day}, stop: ${day + "T23:59:59Z"})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Cycle Time")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])`
         try {
-            const cycleTimeandProgramName = await queryClient.collectRows(optionsQuery)
-            console.log(cycleTimeandProgramName)
-            console.log(cycleTimeandProgramName.length)
-            res.status(200).send({ "Return": cycleTimeandProgramName })
+            const cycleTimeObj = await queryClient.collectRows(cycleTimeQuery)
+            return cycleTimeObj
         }
         catch (err) {
             console.log(err)
         }
     }
+    const getProgramNames = async () => {
+        console.log("Getting Program Names")
+        const programNameQuery = `from(bucket: "${bucket}")
+        |> range(start: ${day}, stop: ${day + "T23:59:59Z"})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Program Name")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])`
+
+        try {
+            const programNameObj = await queryClient.collectRows(programNameQuery)
+            return programNameObj
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    const getPartProductionData = async () => {
+        console.log("Getting Part Production Data")
+        const partProductionQuery = `from(bucket: "${bucket}")
+        |> range(start: ${day}, stop: ${day + "T23:59:59Z"})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Parts Counter")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])`
+
+        try {
+            const partProductionObj = await queryClient.collectRows(partProductionQuery)
+            return partProductionObj
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+
     getData()
+
 
 })
 
