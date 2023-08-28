@@ -704,6 +704,13 @@ app.post('/program-history', jsonParser, (req, res) => {
     const userOrg = req.body.org;
     const bucket = req.body.bucket;
     const day = (new Date(req.body.day)).toISOString().split('T')[0].toString();
+
+    if(userToken == undefined || userOrg == undefined || bucket == undefined || day == undefined){
+        console.log("Missing Parameters")
+        res.status(400).send("Missing Parameters")
+        return
+    }
+
     const queryClient = createQueryClient(url, userToken, userOrg)
     const getData = async () => {
         let programObjects = [];
