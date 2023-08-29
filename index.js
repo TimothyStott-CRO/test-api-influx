@@ -705,7 +705,7 @@ app.post('/program-history', jsonParser, (req, res) => {
     const bucket = req.body.bucket;
     const day = (new Date(req.body.day)).toISOString().split('T')[0].toString();
 
-    if(userToken == undefined || userOrg == undefined || bucket == undefined || day == undefined){
+    if (userToken == undefined || userOrg == undefined || bucket == undefined || day == undefined) {
         console.log("Missing Parameters")
         res.status(400).send("Missing Parameters")
         return
@@ -718,19 +718,19 @@ app.post('/program-history', jsonParser, (req, res) => {
         let programNames = await getProgramNames()
         let partsProduced = await getPartProductionData()
 
-        if (allCycleTimes.length > 0) {
+        if (allCycleTimes.length !== 0) {
             for (let i = 0; i < allCycleTimes.length; i++) {
                 if (i != 0 && allCycleTimes[i]._value < allCycleTimes[i - 1]._value) {
                     //this means we found a completed cycle
                     let cycleEndTime = allCycleTimes[i - 1]._time
                     let cycleLength = allCycleTimes[i - 1]._value
                     let cycleStartTime;
-                    for(let j = i-1; j >= 0; j--){
-                        if(j == 1 || j == 0){
+                    for (let j = i - 1; j >= 0; j--) {
+                        if (j == 1 || j == 0) {
                             cycleStartTime = allCycleTimes[0]._time
                             break;
                         }
-                        if(allCycleTimes[j-1]._value > allCycleTimes[j]._value){
+                        if (allCycleTimes[j - 1]._value > allCycleTimes[j]._value) {
                             cycleStartTime = allCycleTimes[j]._time
                             break;
                         }
@@ -738,7 +738,20 @@ app.post('/program-history', jsonParser, (req, res) => {
                     if (cycleStartTime == undefined) {
                         cycleStartTime = "No Data"
                     }
-                    programObjects.push({ cycleStartTime: cycleStartTime, cycleEndTime: cycleEndTime, cycleLength: cycleLength, loadTime: 0, programName: "", didFinish: false, wantedToFinish: true })
+                    programObjects.push(
+                        {
+                            cycleStartTime: cycleStartTime, //used for display
+                            cycleStartUTC: cycleStartTime, //used for DB queries later
+
+                            cycleEndTime: cycleEndTime, //used for display
+                            cycleEndUTC: cycleEndTime,  //used for DB queries later
+
+                            cycleLength: cycleLength,
+                            loadTime: 0,
+                            programName: "",
+                            didFinish: false,
+                            id: i
+                        })
                 }
             }
             console.log("Program Objects Initialized")
@@ -762,7 +775,7 @@ app.post('/program-history', jsonParser, (req, res) => {
         }
 
         else {
-            res.status(200).send([{ cycleStartTime: "No Data", cycleEndTime: "No Data", cycleLength: "No Data", loadTime: "No Data", programName: "No Data", didFinish: "No Data"}])
+            res.status(200).send([{ cycleStartTime: "No Data", cycleEndTime: "No Data", cycleLength: "No Data", loadTime: "No Data", programName: "No Data", didFinish: "No Data" }])
             return
         }
         //at this point we have cycle start times and end times and load times
@@ -807,8 +820,8 @@ app.post('/program-history', jsonParser, (req, res) => {
         //update Times to local
         console.log("Updating Times to Local and formatting Duration")
         programObjects.forEach((program) => {
-            program.cycleStartTime = new Date(program.cycleStartTime).toLocaleTimeString()
-            program.cycleEndTime = new Date(program.cycleEndTime).toLocaleTimeString()
+            program.cycleStartTime = new Date(program.cycleStartTime).toLocaleTimeString().split(" ")[0]
+            program.cycleEndTime = new Date(program.cycleEndTime).toLocaleTimeString().split(" ")[0]
             let cycleLength = program.cycleLength.toString().split(".")
             program.cycleLength = `${cycleLength[0]}m ${(cycleLength[1])}s`
         })
@@ -877,6 +890,137 @@ app.post('/program-history', jsonParser, (req, res) => {
 
     getData()
 
+
+})
+
+app.post('/program-history-details', jsonParser, (req, res) => {
+    const userToken = req.body.token;
+    const userOrg = req.body.org;
+    const bucket = req.body.bucket;
+    const start = req.body.start;
+    const stop = req.body.stop;
+    
+    console.log(start)
+
+    let responseObj = {
+        rapidOverrideSlowedDown: "No Data",
+        feedrateOverrideSlowedDown: "No Data",
+        spindleOverrideSlowedDown: "No Data",
+        
+        //It would be important to know if these overrides were over 100
+        rapidOverrideSpedUp: "No Data",
+        feedrateOverrideSpedUp: "No Data",
+        spindleOverrideSpedUp: "No Data",
+
+        //override numbers
+        rapidOverrideMax: "No Data",
+        rapidOverrideMin: "No Data",
+
+        feedrateOverrideMax: "No Data",
+        feedrateOverrideMin: "No Data",
+
+        spindleOverrideMax: "No Data",
+        spindleOverrideMin: "No Data",
+    }
+
+    if (userToken == undefined || userOrg == undefined || start == undefined || stop == undefined) {
+        console.log("Missing Parameters")
+        res.status(400).send("Missing Parameters")
+        return
+    }
+
+    const queryClient = createQueryClient(url, userToken, userOrg)
+    const getData = async () => {
+        let overrideQueryInfo = await getOverrideInfo()
+        processOverrideInfo(overrideQueryInfo)
+        res.status(200).send(responseObj)
+    }
+    getData();
+
+    async function getOverrideInfo() {
+        const overrideQuery = `from(bucket: "${bucket}")
+        |> range(start: ${start}, stop: ${stop})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Feed Rate Override" or r["_field"] == "Rapid Override" or r["_field"] == "Spindle Override")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> distinct()`
+        try {
+            const overrideQueryReturn = await queryClient.collectRows(overrideQuery)
+            return overrideQueryReturn
+        }
+        catch (err) {
+            console.log(err)
+        }
+    }
+    function processOverrideInfo(overrideData){
+        let rapidOverrideArray = [];
+        let feedrateOverrideArray = [];
+        let spindleOverrideArray = [];
+        for(let i = 0; i < overrideData.length; i++){
+            if(overrideData[i]._field === "Rapid Override"){
+                rapidOverrideArray.push(overrideData[i]._value)
+            }
+            if(overrideData[i]._field === "Feed Rate Override"){
+                feedrateOverrideArray.push(overrideData[i]._value)
+            }
+            if(overrideData[i]._field === "Spindle Override"){
+                spindleOverrideArray.push(overrideData[i]._value)
+            }
+        }
+        //empty arrays evalute to Math.max == -Infinity and Math.min == Infinity
+        responseObj.rapidOverrideMax = Math.max(...rapidOverrideArray) == -Infinity ? "No Data" : Math.max(...rapidOverrideArray)
+        responseObj.rapidOverrideMin = Math.min(...rapidOverrideArray)  == Infinity ? "No Data" : Math.min(...rapidOverrideArray)
+
+        if(responseObj.rapidOverrideMax > 100){
+            responseObj.rapidOverrideSpedUp = true
+        }
+        else{
+            responseObj.rapidOverrideSpedUp = false
+        }
+
+        if(responseObj.rapidOverrideMin < 100){
+            responseObj.rapidOverrideSlowedDown = true
+        }
+        else{
+            responseObj.rapidOverrideSlowedDown = false
+        }
+
+        responseObj.feedrateOverrideMax = Math.max(...feedrateOverrideArray) == -Infinity ? "No Data" : Math.max(...feedrateOverrideArray)
+        responseObj.feedrateOverrideMin = Math.min(...feedrateOverrideArray) == Infinity ? "No Data" : Math.min(...feedrateOverrideArray)
+
+        if(responseObj.feedrateOverrideMax > 100){
+            responseObj.feedrateOverrideSpedUp = true
+        }
+        else{
+            responseObj.feedrateOverrideSpedUp = false
+        }
+
+        if(responseObj.feedrateOverrideMin < 100){
+            responseObj.feedrateOverrideSlowedDown = true
+        }
+        else{
+            responseObj.feedrateOverrideSlowedDown = false
+        }
+     
+
+        responseObj.spindleOverrideMax = Math.max(...spindleOverrideArray) == -Infinity ? "No Data" : Math.max(...spindleOverrideArray)
+        responseObj.spindleOverrideMin = Math.min(...spindleOverrideArray) == Infinity ? "No Data" : Math.min(...spindleOverrideArray)
+
+        if(responseObj.spindleOverrideMax > 100){
+            responseObj.spindleOverrideSpedUp = true
+        }
+        else{
+            responseObj.spindleOverrideSpedUp = false
+        }
+
+        if(responseObj.spindleOverrideMin < 100){
+            responseObj.spindleOverrideSlowedDown = true
+        }
+        else{
+            responseObj.spindleOverrideSlowedDown = false
+        }
+
+    }
 
 })
 
