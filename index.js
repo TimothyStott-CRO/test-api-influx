@@ -813,9 +813,6 @@ app.post('/program-history', jsonParser, (req, res) => {
                 }
             }
         }
-        else {
-            return
-        }
 
         //update Times to local
         console.log("Updating Times to Local and formatting Duration")
@@ -899,14 +896,13 @@ app.post('/program-history-details', jsonParser, (req, res) => {
     const bucket = req.body.bucket;
     const start = req.body.start;
     const stop = req.body.stop;
-    
-    console.log(start)
 
+    console.log(req.body)
     let responseObj = {
         rapidOverrideSlowedDown: "No Data",
         feedrateOverrideSlowedDown: "No Data",
         spindleOverrideSlowedDown: "No Data",
-        
+
         //It would be important to know if these overrides were over 100
         rapidOverrideSpedUp: "No Data",
         feedrateOverrideSpedUp: "No Data",
@@ -932,8 +928,10 @@ app.post('/program-history-details', jsonParser, (req, res) => {
     const queryClient = createQueryClient(url, userToken, userOrg)
     const getData = async () => {
         let overrideQueryInfo = await getOverrideInfo()
+        let spindleQueryInfo = await getSpindleInfo()
         processOverrideInfo(overrideQueryInfo)
-        res.status(200).send(responseObj)
+        let retunObj = { ...responseObj, ...spindleQueryInfo }
+        res.status(200).send(retunObj)
     }
     getData();
 
@@ -952,71 +950,103 @@ app.post('/program-history-details', jsonParser, (req, res) => {
             console.log(err)
         }
     }
-    function processOverrideInfo(overrideData){
+    async function getSpindleInfo() {
+        let spindleInfoToReturn = { spike: "No Data", average: "No Data" };
+
+        const spindleMaxSpikeQuery = `from(bucket: "${bucket}")
+        |> range(start: ${start}, stop: ${stop})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Spindle: S1 Load")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> max()`
+        const spindleAverageQuery = `from(bucket: "${bucket}")
+        |> range(start: ${start}, stop: ${stop})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Spindle: S1 Load")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> filter(fn: (r) => r._value != 0)
+        |> mean()`
+        try {
+            const spindleMaxSpikeInfo = await queryClient.collectRows(spindleMaxSpikeQuery)
+            const spindleAverageInfo = await queryClient.collectRows(spindleAverageQuery)
+            if (spindleMaxSpikeInfo.length > 0) {
+                spindleInfoToReturn.spike = spindleMaxSpikeInfo[0]._value
+            }
+            if (spindleAverageInfo.length > 0) {
+                spindleInfoToReturn.average = spindleAverageInfo[0]._value.toFixed(2)
+            }
+            return spindleInfoToReturn
+        }
+        catch (err) {
+            console.log(err)
+            return spindleInfoToReturn
+        }
+    }
+    function processOverrideInfo(overrideData) {
         let rapidOverrideArray = [];
         let feedrateOverrideArray = [];
         let spindleOverrideArray = [];
-        for(let i = 0; i < overrideData.length; i++){
-            if(overrideData[i]._field === "Rapid Override"){
+        for (let i = 0; i < overrideData.length; i++) {
+            if (overrideData[i]._field === "Rapid Override") {
                 rapidOverrideArray.push(overrideData[i]._value)
             }
-            if(overrideData[i]._field === "Feed Rate Override"){
+            if (overrideData[i]._field === "Feed Rate Override") {
                 feedrateOverrideArray.push(overrideData[i]._value)
             }
-            if(overrideData[i]._field === "Spindle Override"){
+            if (overrideData[i]._field === "Spindle Override") {
                 spindleOverrideArray.push(overrideData[i]._value)
             }
         }
         //empty arrays evalute to Math.max == -Infinity and Math.min == Infinity
         responseObj.rapidOverrideMax = Math.max(...rapidOverrideArray) == -Infinity ? "No Data" : Math.max(...rapidOverrideArray)
-        responseObj.rapidOverrideMin = Math.min(...rapidOverrideArray)  == Infinity ? "No Data" : Math.min(...rapidOverrideArray)
+        responseObj.rapidOverrideMin = Math.min(...rapidOverrideArray) == Infinity ? "No Data" : Math.min(...rapidOverrideArray)
 
-        if(responseObj.rapidOverrideMax > 100){
+        if (responseObj.rapidOverrideMax > 100) {
             responseObj.rapidOverrideSpedUp = true
         }
-        else{
+        else {
             responseObj.rapidOverrideSpedUp = false
         }
 
-        if(responseObj.rapidOverrideMin < 100){
+        if (responseObj.rapidOverrideMin < 100) {
             responseObj.rapidOverrideSlowedDown = true
         }
-        else{
+        else {
             responseObj.rapidOverrideSlowedDown = false
         }
 
         responseObj.feedrateOverrideMax = Math.max(...feedrateOverrideArray) == -Infinity ? "No Data" : Math.max(...feedrateOverrideArray)
         responseObj.feedrateOverrideMin = Math.min(...feedrateOverrideArray) == Infinity ? "No Data" : Math.min(...feedrateOverrideArray)
 
-        if(responseObj.feedrateOverrideMax > 100){
+        if (responseObj.feedrateOverrideMax > 100) {
             responseObj.feedrateOverrideSpedUp = true
         }
-        else{
+        else {
             responseObj.feedrateOverrideSpedUp = false
         }
 
-        if(responseObj.feedrateOverrideMin < 100){
+        if (responseObj.feedrateOverrideMin < 100) {
             responseObj.feedrateOverrideSlowedDown = true
         }
-        else{
+        else {
             responseObj.feedrateOverrideSlowedDown = false
         }
-     
+
 
         responseObj.spindleOverrideMax = Math.max(...spindleOverrideArray) == -Infinity ? "No Data" : Math.max(...spindleOverrideArray)
         responseObj.spindleOverrideMin = Math.min(...spindleOverrideArray) == Infinity ? "No Data" : Math.min(...spindleOverrideArray)
 
-        if(responseObj.spindleOverrideMax > 100){
+        if (responseObj.spindleOverrideMax > 100) {
             responseObj.spindleOverrideSpedUp = true
         }
-        else{
+        else {
             responseObj.spindleOverrideSpedUp = false
         }
 
-        if(responseObj.spindleOverrideMin < 100){
+        if (responseObj.spindleOverrideMin < 100) {
             responseObj.spindleOverrideSlowedDown = true
         }
-        else{
+        else {
             responseObj.spindleOverrideSlowedDown = false
         }
 
@@ -1024,6 +1054,204 @@ app.post('/program-history-details', jsonParser, (req, res) => {
 
 })
 
+app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
+    const yesterday = (new Date(Date.now() - 86400000).toISOString().split('T')[0]).toString();
+    const today = (new Date().toISOString().split('T')[0]).toString();
+    const buckets = req.body.buckets;
+    const org = req.headers.org;
+    const token = req.headers.token;
+    const queryClient = createQueryClient(url, token, org)
+
+    const getData = async () => {
+        let programs = [];
+        for (const bucket in buckets) {
+            let bucketToGet = buckets[bucket];
+            let programNameObj = await getFirstAndLastProgram(bucketToGet, yesterday, today)
+            let cycleStatEndTimeObj = await getFirstCycleTimeandLastCycleTime(bucketToGet, yesterday, today)
+            let runTimeRet = await getTotalRunTime(bucketToGet, yesterday, today)
+            let machineOnTimeRet = await getMachineOnTime(bucketToGet, yesterday, today)
+            let partsProducedRet = await getPartProductionData(bucketToGet, yesterday, today)
+            let productivityRet = calculateProductivity(runTimeRet, machineOnTimeRet)
+            let retObject = {
+                ...programNameObj,
+                ...cycleStatEndTimeObj,
+                bucket: bucketToGet,
+                RunTime: runTimeRet,
+                MachineOnTime: machineOnTimeRet,
+                PartsProduced: partsProducedRet,
+                Productivity: productivityRet
+            }
+            programs.push(retObject)
+        }
+
+        res.status(200).send(programs)
+    }
+
+    async function getFirstAndLastProgram(bucketToGet, yesterday, today) {
+        const firstProgramQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Program Name")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> first()`
+        const lastProgramQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Program Name")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> last()`
+        try {
+            const firstProgram = await queryClient.collectRows(firstProgramQuery)
+            const lastProgram = await queryClient.collectRows(lastProgramQuery)
+            return {
+                firstProgram: firstProgram[0]._value ? firstProgram[0]._value : "No Data",
+                lastProgram: lastProgram[0]._value ? lastProgram[0]._value : "No Data",
+            }
+        }
+        catch (err) {
+            console.log(err)
+            return "No Data"
+        }
+    }
+
+    async function getFirstCycleTimeandLastCycleTime(bucketToGet, yesterday, today) {
+        const firstCycleTimeQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Cycle Time")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> first()`
+        const lastCycleTimeQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Cycle Time")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> last()`
+        try {
+            const firstCycleTime = await queryClient.collectRows(firstCycleTimeQuery)
+            const lastCycleTime = await queryClient.collectRows(lastCycleTimeQuery)
+            return {
+                firstCycleTime: firstCycleTime[0]._time ? firstCycleTime[0]._time : "No Data",
+                lastCycleTime: lastCycleTime[0]._time ? lastCycleTime[0]._time : "No Data",
+            }
+
+        }
+        catch (err) {
+            console.log(err)
+            return "No Data"
+        }
+    }
+
+    async function getTotalRunTime(bucketToGet, yesterday, today) {
+        const getRunTimeQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Run Time")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> spread()`
+
+        try {
+            const runTime = await queryClient.collectRows(getRunTimeQuery)
+            if (runTime.length > 0) {
+                return runTime[0]._value
+            }
+            else {
+                return "No Data"
+            }
+        }
+        catch (err) {
+            console.log(err)
+            return "No Data"
+        }
+    }
+
+    async function getMachineOnTime(bucketToGet, yesterday, today) {
+        const getRunTimeQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Machine Hours")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> spread()`
+
+        try {
+            const machineOnTime = await queryClient.collectRows(getRunTimeQuery)
+            if (machineOnTime.length > 0) {
+                return machineOnTime[0]._value
+            }
+            else {
+                return "No Data"
+            }
+        }
+        catch (err) {
+            console.log(err)
+            return "No Data"
+        }
+    }
+
+    async function getPartProductionData(bucketToGet, yesterday, today) {
+        const partProductionQuery = `from(bucket: "${bucketToGet}")
+        |> range(start: ${yesterday}, stop: ${today})
+        |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+        |> filter(fn: (r) => r["_field"] == "Parts Counter")
+        |> filter(fn: (r) => not exists r["Alarm One Shot"])
+        |> spread()`
+
+        try {
+            const partProduction = await queryClient.collectRows(partProductionQuery)
+            if (partProduction.length > 0) {
+                return partProduction[0]._value
+            }
+            else {
+                return "No Data"
+            }
+        }
+        catch (err) {
+            console.log(err)
+            return "No Data"
+        }
+    }
+
+    function calculateProductivity(runTime,onTime){
+        if(runTime == undefined || onTime == undefined){
+            return "No Data"
+        }
+        if(runTime == "No Data" || onTime == "No Data"){
+            return "No Data"
+        }
+        let productivity = (runTime/onTime)*100
+        return productivity.toFixed(2) + "%"
+
+    }
+
+    getData();
+})
+
+app.get('/todaysStats', jsonParser, function (req, res) {
+    const tomorrow = (new Date(Date.now() + 86400000).toISOString().split('T')[0]).toString();
+    const today = (new Date().toISOString().split('T')[0]).toString();
+    const buckets = req.body.buckets;
+    const org = req.headers.org;
+    const token = req.headers.token;
+    const queryClient = createQueryClient(url, token, org)
+
+    const getData = async () => {
+
+        //see what machines have actually writted dater
+        
+        //get parts produced for all them mocheens
+        
+        //get productivity for all them mocheens
+        
+        //get run time for all them mocheens
+        
+        //get machine on time for all them mocheens
+        res.status(200).send("Not Implemented")
+
+    }
+
+
+    getData();
+})
 
 app.listen(port, () => {
     console.log(`Listening on port ${port}`)
