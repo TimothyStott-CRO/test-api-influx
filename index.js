@@ -1063,7 +1063,7 @@ app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
     const queryClient = createQueryClient(url, token, org)
 
     const getData = async () => {
-        let programs = [];
+        let yesterdayAtAGlance = [];
         for (const bucket in buckets) {
             let bucketToGet = buckets[bucket];
             let programNameObj = await getFirstAndLastProgram(bucketToGet, yesterday, today)
@@ -1081,10 +1081,10 @@ app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
                 PartsProduced: partsProducedRet,
                 Productivity: productivityRet
             }
-            programs.push(retObject)
+            yesterdayAtAGlance.push(retObject)
         }
 
-        res.status(200).send(programs)
+        res.status(200).send(yesterdayAtAGlance)
     }
 
     async function getFirstAndLastProgram(bucketToGet, yesterday, today) {
@@ -1211,14 +1211,14 @@ app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
         }
     }
 
-    function calculateProductivity(runTime,onTime){
-        if(runTime == undefined || onTime == undefined){
+    function calculateProductivity(runTime, onTime) {
+        if (runTime == undefined || onTime == undefined) {
             return "No Data"
         }
-        if(runTime == "No Data" || onTime == "No Data"){
+        if (runTime == "No Data" || onTime == "No Data") {
             return "No Data"
         }
-        let productivity = (runTime/onTime)*100
+        let productivity = (runTime / onTime) * 100
         return productivity.toFixed(2) + "%"
 
     }
@@ -1235,22 +1235,193 @@ app.get('/todaysStats', jsonParser, function (req, res) {
     const queryClient = createQueryClient(url, token, org)
 
     const getData = async () => {
-
         //see what machines have actually writted dater
-        
+        let didMachinesWriteObj = await getDidMachinesWriteData(buckets)
         //get parts produced for all them mocheens
-        
-        //get productivity for all them mocheens
-        
+        let partsProducedTotal = await getAllThePartsProduced(didMachinesWriteObj)
         //get run time for all them mocheens
-        
+        let runTimeTotal = await getAllTheRunTime(didMachinesWriteObj)
         //get machine on time for all them mocheens
-        res.status(200).send("Not Implemented")
+        let machineOnTimeTotal = await getAllTheMachineOnTime(didMachinesWriteObj)
+        //set producitivity for all them mocheens
+        let productivityTotal = await setAlltheProductivity(runTimeTotal,machineOnTimeTotal)
+        //set total reporting machines count
+        let totalReportingMachines =  getReportingMachinesCount(didMachinesWriteObj)
+        //format return object
+        let returnObject = formatReturnObject(partsProducedTotal, runTimeTotal, machineOnTimeTotal, productivityTotal, totalReportingMachines)
+        res.status(200).send(returnObject)
 
     }
 
 
     getData();
+
+    async function getDidMachinesWriteData(bucketsToCheck) {
+        let toRet = [];
+        for (const bumkit in bucketsToCheck) {
+            let bucketToCheck = bucketsToCheck[bumkit]
+            const getDidMachinesWriteQuery = `from(bucket: "${bucketToCheck}")
+            |> range(start: ${today}, stop: ${tomorrow})
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> count()`
+            try {
+                const didMachinesWrite = await queryClient.collectRows(getDidMachinesWriteQuery)
+                if (didMachinesWrite.length > 0) {
+                    toRet.push({ SN: bucketsToCheck[bumkit], WroteToday: true })
+                }
+                else {
+                    toRet.push({ SN: bucketsToCheck[bumkit], WroteToday: false })
+                }
+            }
+            catch (err) {
+                console.log(err)
+                toRet.push({ SN: bucketsToCheck[bumkit], WroteToday: false })
+            }
+        }
+        return toRet
+    }
+    async function getAllThePartsProduced(bucketsToCheck) {
+        let individualPartsProducedArr = [];
+        let totalPartsProduced;
+        for (const bumkit in bucketsToCheck) {
+            if (!bucketsToCheck[bumkit].WroteToday) {
+                return
+            }
+            let bucketToCheck = bucketsToCheck[bumkit]
+
+            const getPartsProducedQuery = `from(bucket: "${bucketToCheck.SN}")
+            |> range(start: ${today})
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Parts Counter")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> spread()`
+
+            try {
+                const partsProduced = await queryClient.collectRows(getPartsProducedQuery)
+                if (partsProduced.length > 0) {
+                    individualPartsProducedArr.push(partsProduced[0]._value)
+                }
+                else {
+                    individualPartsProducedArr.push(partsProduced.push(0))
+                }
+            }
+            catch (err) {
+                console.log(err)
+                individualPartsProducedArr.push(partsProduced.push(0))
+            }
+        }
+
+        if (individualPartsProducedArr.length > 0) {
+            totalPartsProduced = individualPartsProducedArr.reduce((a, b) => a + b, 0)
+        }
+
+        return totalPartsProduced
+    }
+    async function getAllTheRunTime(bucketsToCheck) {
+        let individualRunTimeArr = [];
+        let totalRunTime;
+        for (const bumkit in bucketsToCheck) {
+            if (!bucketsToCheck[bumkit].WroteToday) {
+                return
+            }
+            let bucketToCheck = bucketsToCheck[bumkit]
+
+            const getRunTimeQuery = `from(bucket: "${bucketToCheck.SN}")
+            |> range(start: ${today})
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Run Time")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> spread()`
+
+            try {
+                const runTime = await queryClient.collectRows(getRunTimeQuery)
+                if (runTime.length > 0) {
+                    individualRunTimeArr.push(runTime[0]._value)
+                }
+                else {
+                    individualRunTimeArr.push(runTime.push(0))
+                }
+            }
+            catch (err) {
+                console.log(err)
+                individualRunTimeArr.push(runTime.push(0))
+            }
+        }
+
+        if (individualRunTimeArr.length > 0) {
+            totalRunTime = individualRunTimeArr.reduce((a, b) => a + b, 0)
+        }
+
+        return totalRunTime
+    }
+    async function getAllTheMachineOnTime(bucketsToCheck){
+        let individualMachineOnTimeArr = [];
+        let totalMachineOnTime;
+        for (const bumkit in bucketsToCheck) {
+            if (!bucketsToCheck[bumkit].WroteToday) {
+                return
+            }
+            let bucketToCheck = bucketsToCheck[bumkit]
+
+            const getMachineOnTimeQuery = `from(bucket: "${bucketToCheck.SN}")
+            |> range(start: ${today})
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Machine Hours")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> spread()`
+
+            try {
+                const machineOnTime = await queryClient.collectRows(getMachineOnTimeQuery)
+                if (machineOnTime.length > 0) {
+                    individualMachineOnTimeArr.push(machineOnTime[0]._value)
+                }
+                else {
+                    individualMachineOnTimeArr.push(machineOnTime.push(0))
+                }
+            }
+            catch (err) {
+                console.log(err)
+                individualMachineOnTimeArr.push(machineOnTime.push(0))
+            }
+        }
+
+        if (individualMachineOnTimeArr.length > 0) {
+            totalMachineOnTime = individualMachineOnTimeArr.reduce((a, b) => a + b, 0)
+        }
+
+        return totalMachineOnTime
+    }
+    function setAlltheProductivity(runTimeTotal,machineOnTimeTotal){
+        if(runTimeTotal == undefined || machineOnTimeTotal == undefined){
+            return "No Data"
+        }
+        if(runTimeTotal == "No Data" || machineOnTimeTotal == "No Data"){
+            return "No Data"
+        }
+        let productivity = (runTimeTotal / machineOnTimeTotal) * 100
+        return productivity.toFixed(2) + "%"
+    }
+    function getReportingMachinesCount(machinesToCheck){
+        let count = 0;
+        machinesToCheck.forEach((machine)=>{
+            if(machine.WroteToday){
+                count++
+            }
+        })
+        return count
+    }
+    function formatReturnObject(partsProducedTotal, runTimeTotal, machineOnTimeTotal, productivityTotal, totalReportingMachines){
+        let returnObj = {
+            partsProduced: partsProducedTotal,
+            runTime: runTimeTotal,
+            machineOnTime: machineOnTimeTotal,
+            productivity: productivityTotal,
+            totalReportingMachines: totalReportingMachines
+        }
+        return returnObj
+    }
+
+
 })
 
 app.listen(port, () => {

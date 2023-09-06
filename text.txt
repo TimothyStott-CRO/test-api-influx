@@ -13,14 +13,22 @@ Total On Time ###This is working
 Parts Produced ###this is working
 Productivity ###
 
+
+
+
 Today's Stats 
+
+
 Machines Reporting (query all buckets and see if they have a some data for today)
+
+
 parts produced total 
+
 productivity
+
 list of programs (possibly)
 total cycle time
 total on time
-total load time
 
 
 7 and 14 day productivity chart
