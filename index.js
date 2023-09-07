@@ -1054,12 +1054,12 @@ app.post('/program-history-details', jsonParser, (req, res) => {
 
 })
 
-app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
+app.post('/yesterdayAtAGlance', jsonParser, function (req, res) {
     const yesterday = (new Date(Date.now() - 86400000).toISOString().split('T')[0]).toString();
     const today = (new Date().toISOString().split('T')[0]).toString();
     const buckets = req.body.buckets;
-    const org = req.headers.org;
-    const token = req.headers.token;
+    const org = req.body.org;
+    const token = req.body.token;
     const queryClient = createQueryClient(url, token, org)
 
     const getData = async () => {
@@ -1110,7 +1110,7 @@ app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
         }
         catch (err) {
             console.log(err)
-            return "No Data"
+            return { firstProgram: "No Data", lastProgram: "No Data" }
         }
     }
 
@@ -1131,14 +1131,14 @@ app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
             const firstCycleTime = await queryClient.collectRows(firstCycleTimeQuery)
             const lastCycleTime = await queryClient.collectRows(lastCycleTimeQuery)
             return {
-                firstCycleTime: firstCycleTime[0]._time ? firstCycleTime[0]._time : "No Data",
-                lastCycleTime: lastCycleTime[0]._time ? lastCycleTime[0]._time : "No Data",
+                firstCycleTime: firstCycleTime[0]._time ? new Date(firstCycleTime[0]._time).toLocaleString().split(',')[1].trimStart() : "No Data",
+                lastCycleTime: lastCycleTime[0]._time ? new Date(lastCycleTime[0]._time).toLocaleString().split(',')[1].trimStart() : "No Data",
             }
 
         }
         catch (err) {
             console.log(err)
-            return "No Data"
+            return { firstCycleTime: "No Data", lastCycleTime: "No Data" }
         }
     }
 
@@ -1226,14 +1226,13 @@ app.get('/yesterdayAtAGlance', jsonParser, function (req, res) {
     getData();
 })
 
-app.get('/todaysStats', jsonParser, function (req, res) {
+app.post('/todaysStats', jsonParser, function (req, res) {
     const tomorrow = (new Date(Date.now() + 86400000).toISOString().split('T')[0]).toString();
     const today = (new Date().toISOString().split('T')[0]).toString();
     const buckets = req.body.buckets;
-    const org = req.headers.org;
-    const token = req.headers.token;
+    const org = req.body.org;
+    const token = req.body.token;
     const queryClient = createQueryClient(url, token, org)
-
     const getData = async () => {
         //see what machines have actually writted dater
         let didMachinesWriteObj = await getDidMachinesWriteData(buckets)
@@ -1244,9 +1243,9 @@ app.get('/todaysStats', jsonParser, function (req, res) {
         //get machine on time for all them mocheens
         let machineOnTimeTotal = await getAllTheMachineOnTime(didMachinesWriteObj)
         //set producitivity for all them mocheens
-        let productivityTotal = await setAlltheProductivity(runTimeTotal,machineOnTimeTotal)
+        let productivityTotal = await setAlltheProductivity(runTimeTotal, machineOnTimeTotal)
         //set total reporting machines count
-        let totalReportingMachines =  getReportingMachinesCount(didMachinesWriteObj)
+        let totalReportingMachines = getReportingMachinesCount(didMachinesWriteObj)
         //format return object
         let returnObject = formatReturnObject(partsProducedTotal, runTimeTotal, machineOnTimeTotal, productivityTotal, totalReportingMachines)
         res.status(200).send(returnObject)
@@ -1285,7 +1284,7 @@ app.get('/todaysStats', jsonParser, function (req, res) {
         let totalPartsProduced;
         for (const bumkit in bucketsToCheck) {
             if (!bucketsToCheck[bumkit].WroteToday) {
-                return
+                break;
             }
             let bucketToCheck = bucketsToCheck[bumkit]
 
@@ -1302,12 +1301,12 @@ app.get('/todaysStats', jsonParser, function (req, res) {
                     individualPartsProducedArr.push(partsProduced[0]._value)
                 }
                 else {
-                    individualPartsProducedArr.push(partsProduced.push(0))
+                    individualPartsProducedArr.push(0)
                 }
             }
             catch (err) {
                 console.log(err)
-                individualPartsProducedArr.push(partsProduced.push(0))
+                individualPartsProducedArr.push(0)
             }
         }
 
@@ -1322,7 +1321,7 @@ app.get('/todaysStats', jsonParser, function (req, res) {
         let totalRunTime;
         for (const bumkit in bucketsToCheck) {
             if (!bucketsToCheck[bumkit].WroteToday) {
-                return
+                break;
             }
             let bucketToCheck = bucketsToCheck[bumkit]
 
@@ -1354,12 +1353,12 @@ app.get('/todaysStats', jsonParser, function (req, res) {
 
         return totalRunTime
     }
-    async function getAllTheMachineOnTime(bucketsToCheck){
+    async function getAllTheMachineOnTime(bucketsToCheck) {
         let individualMachineOnTimeArr = [];
         let totalMachineOnTime;
         for (const bumkit in bucketsToCheck) {
             if (!bucketsToCheck[bumkit].WroteToday) {
-                return
+                break;
             }
             let bucketToCheck = bucketsToCheck[bumkit]
 
@@ -1391,26 +1390,26 @@ app.get('/todaysStats', jsonParser, function (req, res) {
 
         return totalMachineOnTime
     }
-    function setAlltheProductivity(runTimeTotal,machineOnTimeTotal){
-        if(runTimeTotal == undefined || machineOnTimeTotal == undefined){
+    function setAlltheProductivity(runTimeTotal, machineOnTimeTotal) {
+        if (runTimeTotal == undefined || machineOnTimeTotal == undefined) {
             return "No Data"
         }
-        if(runTimeTotal == "No Data" || machineOnTimeTotal == "No Data"){
+        if (runTimeTotal == "No Data" || machineOnTimeTotal == "No Data") {
             return "No Data"
         }
         let productivity = (runTimeTotal / machineOnTimeTotal) * 100
         return productivity.toFixed(2) + "%"
     }
-    function getReportingMachinesCount(machinesToCheck){
+    function getReportingMachinesCount(machinesToCheck) {
         let count = 0;
-        machinesToCheck.forEach((machine)=>{
-            if(machine.WroteToday){
+        machinesToCheck.forEach((machine) => {
+            if (machine.WroteToday) {
                 count++
             }
         })
         return count
     }
-    function formatReturnObject(partsProducedTotal, runTimeTotal, machineOnTimeTotal, productivityTotal, totalReportingMachines){
+    function formatReturnObject(partsProducedTotal, runTimeTotal, machineOnTimeTotal, productivityTotal, totalReportingMachines) {
         let returnObj = {
             partsProduced: partsProducedTotal,
             runTime: runTimeTotal,
@@ -1421,6 +1420,477 @@ app.get('/todaysStats', jsonParser, function (req, res) {
         return returnObj
     }
 
+
+})
+
+app.post('/14dayStats', jsonParser, function (req, res) {
+    const buckets = req.body.buckets;
+    const org = req.body.org;
+    const token = req.body.token;
+    const queryClient = createQueryClient(url, token, org)
+
+    const getData = async () => {
+        let aggregateRunTimeAll = await getAllRunTimes(buckets)
+        let aggregateOnTimeAll = await getAllOnTimes(buckets)
+        let aggregatePartsProducedAll = await getAllPartsProduced(buckets)
+        res.status(200).send({ allRunTimes: aggregateRunTimeAll, allOnTimes: aggregateOnTimeAll, allPartsProduced: aggregatePartsProducedAll })
+    }
+
+    getData();
+
+    async function getAllRunTimes(bucketsToCheck) {
+        let allRunTimeSpreads = [];
+        let totalRunTime;
+
+        for (const bucket in bucketsToCheck) {
+            let bumkit = bucketsToCheck[bucket]
+
+            const getRunTimeQuery = `from(bucket: "${bumkit}")
+            |> range(start: -14d)
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Run Time")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> spread()`
+
+            try {
+                const runTime = await queryClient.collectRows(getRunTimeQuery)
+                if (runTime.length > 0) {
+                    allRunTimeSpreads.push(runTime[0]._value)
+                }
+                else {
+                    allRunTimeSpreads.push(0)
+                }
+            }
+            catch (err) {
+                console.log(err)
+                allRunTimeSpreads.push(0)
+            }
+        }
+
+
+        if (allRunTimeSpreads.length > 0) {
+            totalRunTime = allRunTimeSpreads.reduce((a, b) => a + b, 0)
+        }
+
+        return totalRunTime
+    }
+    async function getAllOnTimes(bucketsToCheck) {
+        let allRunTimeSpreads = [];
+        let totalOnTime;
+
+        for (const bucket in bucketsToCheck) {
+            let bumkit = bucketsToCheck[bucket]
+
+            const getRunTimeQuery = `from(bucket: "${bumkit}")
+            |> range(start: -14d)
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Machine Hours")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> spread()`
+
+            try {
+                const runTime = await queryClient.collectRows(getRunTimeQuery)
+                if (runTime.length > 0) {
+                    allRunTimeSpreads.push(runTime[0]._value)
+                }
+                else {
+                    allRunTimeSpreads.push(0)
+                }
+            }
+            catch (err) {
+                console.log(err)
+                allRunTimeSpreads.push(0)
+            }
+        }
+
+
+        if (allRunTimeSpreads.length > 0) {
+            totalOnTime = allRunTimeSpreads.reduce((a, b) => a + b, 0)
+        }
+
+        return totalOnTime
+
+    }
+    async function getAllPartsProduced(bucketsToCheck) {
+        let allPartsProducedSpreads = [];
+        let totalPartsProduced;
+
+        for (const bucket in bucketsToCheck) {
+            let bumkit = bucketsToCheck[bucket]
+
+            const getRunTimeQuery = `from(bucket: "${bumkit}")
+            |> range(start: -14d)
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Parts Counter")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> spread()`
+
+            try {
+                const runTime = await queryClient.collectRows(getRunTimeQuery)
+                if (runTime.length > 0) {
+                    allPartsProducedSpreads.push(runTime[0]._value)
+                }
+                else {
+                    allPartsProducedSpreads.push(0)
+                }
+            }
+            catch (err) {
+                console.log(err)
+                allPartsProducedSpreads.push(0)
+            }
+        }
+
+
+        if (allPartsProducedSpreads.length > 0) {
+            totalPartsProduced = allPartsProducedSpreads.reduce((a, b) => a + b, 0)
+        }
+
+        return totalPartsProduced
+
+    }
+    async function getDaysToQuery(bucketsToget) {
+        let daysToCompare = []; //array of arrays that contain returned days that there was a write, per machine, in the last 14 days
+        let daysToQuery = []; //array of the latest 7 days that there was a write in the last 14 days. 
+        for (const bucket in bucketsToget) {
+            const aggWindowQuery = `from(bucket: "${bucketsToget[bucket]}")
+            |> range(start: -14d)
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Machine Hours")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> aggregateWindow(every: 1d, fn: spread, createEmpty: false)
+            |> keep(columns: ["_time"])`
+            try {
+                const aggWindowQueryReturn = await queryClient.collectRows(aggWindowQuery)
+                let days = [];
+                if (aggWindowQueryReturn.length > 0) {
+                    aggWindowQueryReturn.forEach((date) => {
+                        const year = new Date(date._time).toLocaleDateString().split('/')[2]
+                        const month = new Date(date._time).toLocaleDateString().split('/')[0].length == 1 ? "0" + new Date(date._time).toLocaleDateString().split('/')[0] : new Date(date._time).toLocaleDateString().split('/')[0]
+                        const day = new Date(date._time).toLocaleDateString().split('/')[1].length == 1 ? "0" + new Date(date._time).toLocaleDateString().split('/')[1] : new Date(date._time).toLocaleDateString().split('/')[1]
+                        days.push(`${year}-${month}-${day}`)
+                    })
+                    daysToCompare.push(days);
+                }
+            }
+            catch {
+                console.log(err)
+            }
+        }
+        for (let i = 0; i < daysToCompare.length; i++) {
+            //check to see if any of the arrays are not the same length
+            for (let j = 0; j < daysToCompare.length; j++) {
+                if (daysToCompare[i].length != daysToCompare[j].length) {
+                    allSameLength = false;
+                }
+            }
+        }
+        //if all are same length I can just grab the last 7 days from any of the arrays
+        //if not, I need to find the longest array and grab the last 7 days from that array excluding today
+        if (allSameLength) {
+            let count = 0;
+            for (let i = daysToCompare[0].length - 1; i >= 0; i--) {
+                if (count < 7 && daysToCompare[0][i] != today) {
+                    daysToQuery.push(daysToCompare[0][i])
+                    count++
+                }
+                if (count >= 7) {
+                    break;
+                }
+            }
+        }
+        //if not all same length, find the longest array and grab the last 7 days from that array excluding today
+        else {
+            let longestArray = 0;
+            for (let i = 0; i < daysToCompare.length; i++) {
+                if (daysToCompare[i].length > longestArray) {
+                    longestArray = daysToCompare[i].length
+                }
+            }
+            let count = 0;
+            for (let i = longestArray - 1; i >= 0; i--) {
+                if (count < 7 && daysToCompare[0][i] != today) {
+                    daysToQuery.push(daysToCompare[0][i])
+                    count++
+                }
+                if (count >= 7) {
+                    break;
+                }
+            }
+        }
+
+        return daysToQuery
+    }
+
+})
+
+app.post('/7dayStats', jsonParser, function (req, res) {
+    const buckets = req.body.buckets;
+    const org = req.body.org;
+    const token = req.body.token;
+    const queryClient = createQueryClient(url, token, org)
+    let allSameLength = true; //used to determine if all the arrays returned from the query are the same length
+
+    const year = new Date().toLocaleDateString().split('/')[2]
+    const month = new Date().toLocaleDateString().split('/')[0].length == 1 ? "0" + new Date().toLocaleDateString().split('/')[0] : new Date().toLocaleDateString().split('/')[0]
+    const day = new Date().toLocaleDateString().split('/')[1].length == 1 ? "0" + new Date().toLocaleDateString().split('/')[1] : new Date().toLocaleDateString().split('/')[1]
+    const today = `${year}-${month}-${day}`
+
+    const getData = async () => {
+        let daysToQuery = await getDaysToQuery(buckets)
+        let runTimeObjects = await getAllRunTimes(buckets, daysToQuery)
+        let onTimeObjecets = await getAllOnTimes(buckets, daysToQuery)
+        let partsProducedObjects = await getAllPartsProduced(buckets, daysToQuery)
+        res.status(200).send({ runTimeObjects: runTimeObjects, onTimeObjecets: onTimeObjecets, partsProducedObjects: partsProducedObjects })
+    }
+
+    getData();
+
+    async function getDaysToQuery(bucketsToget) {
+        let daysToCompare = []; //array of arrays that contain returned days that there was a write, per machine, in the last 14 days
+        let daysToQuery = []; //array of the latest 7 days that there was a write in the last 14 days. 
+        for (const bucket in bucketsToget) {
+            const aggWindowQuery = `from(bucket: "${bucketsToget[bucket]}")
+            |> range(start: -14d)
+            |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+            |> filter(fn: (r) => r["_field"] == "Machine Hours")
+            |> filter(fn: (r) => not exists r["Alarm One Shot"])
+            |> aggregateWindow(every: 1d, fn: spread, createEmpty: false)
+            |> keep(columns: ["_time"])`
+            try {
+                const aggWindowQueryReturn = await queryClient.collectRows(aggWindowQuery)
+                let days = [];
+                if (aggWindowQueryReturn.length > 0) {
+                    aggWindowQueryReturn.forEach((date) => {
+                        const year = new Date(date._time).toLocaleDateString().split('/')[2]
+                        const month = new Date(date._time).toLocaleDateString().split('/')[0].length == 1 ? "0" + new Date(date._time).toLocaleDateString().split('/')[0] : new Date(date._time).toLocaleDateString().split('/')[0]
+                        const day = new Date(date._time).toLocaleDateString().split('/')[1].length == 1 ? "0" + new Date(date._time).toLocaleDateString().split('/')[1] : new Date(date._time).toLocaleDateString().split('/')[1]
+                        days.push(`${year}-${month}-${day}`)
+                    })
+                    daysToCompare.push(days);
+                }
+            }
+            catch {
+                console.log(err)
+            }
+        }
+        for (let i = 0; i < daysToCompare.length; i++) {
+            //check to see if any of the arrays are not the same length
+            for (let j = 0; j < daysToCompare.length; j++) {
+                if (daysToCompare[i].length != daysToCompare[j].length) {
+                    allSameLength = false;
+                }
+            }
+        }
+        //if all are same length I can just grab the last 7 days from any of the arrays
+        //if not, I need to find the longest array and grab the last 7 days from that array excluding today
+        if (allSameLength) {
+            let count = 0;
+            for (let i = daysToCompare[0].length - 1; i >= 0; i--) {
+                if (count < 7 && daysToCompare[0][i] != today) {
+                    daysToQuery.push(daysToCompare[0][i])
+                    count++
+                }
+                if (count >= 7) {
+                    break;
+                }
+            }
+        }
+        //if not all same length, find the longest array and grab the last 7 days from that array excluding today
+        else {
+            let longestArray = 0;
+            for (let i = 0; i < daysToCompare.length; i++) {
+                if (daysToCompare[i].length > longestArray) {
+                    longestArray = daysToCompare[i].length
+                }
+            }
+            let count = 0;
+            for (let i = longestArray - 1; i >= 0; i--) {
+                if (count < 7 && daysToCompare[0][i] != today) {
+                    daysToQuery.push(daysToCompare[0][i])
+                    count++
+                }
+                if (count >= 7) {
+                    break;
+                }
+            }
+        }
+
+        return daysToQuery
+    }
+    async function getAllRunTimes(bucketsToGet, daysToQuery) {
+        let allRunTimeSpreadObjects = [];
+        for (const bucket in bucketsToGet) {
+            let bumkit = bucketsToGet[bucket]
+            for (const date in daysToQuery) {
+                const startDate = new Date(daysToQuery[date]);
+                const start = startDate.toISOString().split('T')[0];
+                const endDate = new Date(startDate.getTime() + 86400000);
+                const stop = endDate.toISOString().split('T')[0];
+                const getRunTimeQuery = `from(bucket: "${bumkit}")
+                |> range(start: ${start}, stop: ${stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Run Time")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])
+                |> spread()`
+
+                try {
+                    const runTime = await queryClient.collectRows(getRunTimeQuery)
+                    if (runTime.length > 0) {
+                        allRunTimeSpreadObjects.push({ date: start, value: runTime[0]._value })
+                    }
+                    else {
+                        allRunTimeSpreadObjects.push(0)
+                    }
+                }
+                catch (err) {
+                    console.log(err)
+                    allRunTimeSpreadObjects.push(0)
+                }
+            }
+        }
+        let formattedCombinedRunTimeSpreadObjects = [];        //will be the final return object should be date and value
+        let dateKeys = new Set(allRunTimeSpreadObjects.map((obj) => obj.date)) //gives me just the dates so I can combine
+        //filter out undefined dates
+        dateKeys.forEach((key) => {
+            if (key == undefined) {
+                dateKeys.delete(key)
+            }
+        })
+        //sort the dates
+        dateKeys = [...dateKeys].sort((a, b) => {
+            return new Date(a) - new Date(b)
+        })
+        dateKeys.forEach((key) => {
+            let unformattedCombinedRunTimeSpreadObjects = []; //will be the combined objects with the same date before the formatting
+            let values = (allRunTimeSpreadObjects.filter((obj) => obj.date == key)) //gives me all the objects with the current date key
+            unformattedCombinedRunTimeSpreadObjects.push({ date: key, value: values }) //pushes the date and values to the unformatted array to be itterated
+            for (const unformatted in unformattedCombinedRunTimeSpreadObjects) { //begin itteration
+                let valueObj = unformattedCombinedRunTimeSpreadObjects[unformatted].value
+                let totalValue = 0;
+                for (const value in valueObj) {
+                    totalValue += valueObj[value].value
+                }
+                formattedCombinedRunTimeSpreadObjects.push({ date: key, value: totalValue })
+            }
+        })
+        return formattedCombinedRunTimeSpreadObjects
+    }
+    async function getAllOnTimes(bucketsToGet, daysToQuery) {
+        let allOnTimeSpreadObjects = [];
+        for (const bucket in bucketsToGet) {
+            let bumkit = bucketsToGet[bucket]
+            for (const date in daysToQuery) {
+                const startDate = new Date(daysToQuery[date]);
+                const start = startDate.toISOString().split('T')[0];
+                const endDate = new Date(startDate.getTime() + 86400000);
+                const stop = endDate.toISOString().split('T')[0];
+                const getOnTimeQuery = `from(bucket: "${bumkit}")
+                |> range(start: ${start}, stop: ${stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Machine Hours")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])
+                |> spread()`
+
+                try {
+                    const onTime = await queryClient.collectRows(getOnTimeQuery)
+                    if (onTime.length > 0) {
+                        allOnTimeSpreadObjects.push({ date: start, value: onTime[0]._value })
+                    }
+                    else {
+                        allOnTimeSpreadObjects.push(0)
+                    }
+                }
+                catch (err) {
+                    console.log(err)
+                    allOnTimeSpreadObjects.push(0)
+                }
+            }
+        }
+        let formattedCombinedOnTimeSpreadObjects = [];        //will be the final return object should be date and value
+        let dateKeys = new Set(allOnTimeSpreadObjects.map((obj) => obj.date)) //gives me just the dates so I can combine
+        //filter out undefined dates
+        dateKeys.forEach((key) => {
+            if (key == undefined) {
+                dateKeys.delete(key)
+            }
+        })
+        //sort the dates
+        dateKeys = [...dateKeys].sort((a, b) => {
+            return new Date(a) - new Date(b)
+        })
+        dateKeys.forEach((key) => {
+            let unformattedCombinedOnTimeSpreadObjects = []; //will be the combined objects with the same date before the formatting
+            let values = (allOnTimeSpreadObjects.filter((obj) => obj.date == key)) //gives me all the objects with the current date key
+            unformattedCombinedOnTimeSpreadObjects.push({ date: key, value: values }) //pushes the date and values to the unformatted array to be itterated
+            for (const unformatted in unformattedCombinedOnTimeSpreadObjects) { //begin itteration
+                let valueObj = unformattedCombinedOnTimeSpreadObjects[unformatted].value
+                let totalValue = 0;
+                for (const value in valueObj) {
+                    totalValue += valueObj[value].value
+                }
+                formattedCombinedOnTimeSpreadObjects.push({ date: key, value: totalValue })
+            }
+        })
+        return formattedCombinedOnTimeSpreadObjects
+    }
+    async function getAllPartsProduced(bucketsToGet, daysToQuery) {
+        let allPartsProducedSpreadObjects = [];
+        for (const bucket in bucketsToGet) {
+            let bumkit = bucketsToGet[bucket]
+            for (const date in daysToQuery) {
+                const startDate = new Date(daysToQuery[date]);
+                const start = startDate.toISOString().split('T')[0];
+                const endDate = new Date(startDate.getTime() + 86400000);
+                const stop = endDate.toISOString().split('T')[0];
+                const partsProducedQuery = `from(bucket: "${bumkit}")
+                |> range(start: ${start}, stop: ${stop})
+                |> filter(fn: (r) => r["_measurement"] == "Gen Info")
+                |> filter(fn: (r) => r["_field"] == "Parts Counter")
+                |> filter(fn: (r) => not exists r["Alarm One Shot"])
+                |> spread()`
+
+                try {
+                    const partsProduced = await queryClient.collectRows(partsProducedQuery)
+                    if (partsProduced.length > 0) {
+                        allPartsProducedSpreadObjects.push({ date: start, value: partsProduced[0]._value })
+                    }
+                    else {
+                        allPartsProducedSpreadObjects.push(0)
+                    }
+                }
+                catch (err) {
+                    console.log(err)
+                    allPartsProducedSpreadObjects.push(0)
+                }
+            }
+        }
+        let formattedCombinedPartsProducedObjects = [];        //will be the final return object should be date and value
+        let dateKeys = new Set(allPartsProducedSpreadObjects.map((obj) => obj.date)) //gives me just the dates so I can combine
+        //filter out undefined dates
+        dateKeys.forEach((key) => {
+            if (key == undefined) {
+                dateKeys.delete(key)
+            }
+        })
+        //sort the dates
+        dateKeys = [...dateKeys].sort((a, b) => {
+            return new Date(a) - new Date(b)
+        })
+        dateKeys.forEach((key) => {
+            let unformattedCombinedPartsProducedObjects = []; //will be the combined objects with the same date before the formatting
+            let values = (allPartsProducedSpreadObjects.filter((obj) => obj.date == key)) //gives me all the objects with the current date key
+            unformattedCombinedPartsProducedObjects.push({ date: key, value: values }) //pushes the date and values to the unformatted array to be itterated
+            for (const unformatted in unformattedCombinedPartsProducedObjects) { //begin itteration
+                let valueObj = unformattedCombinedPartsProducedObjects[unformatted].value
+                let totalValue = 0;
+                for (const value in valueObj) {
+                    totalValue += valueObj[value].value
+                }
+                formattedCombinedPartsProducedObjects.push({ date: key, value: totalValue })
+            }
+        })
+        return formattedCombinedPartsProducedObjects
+    }
 
 })
 
